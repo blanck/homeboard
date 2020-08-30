@@ -116,7 +116,7 @@
                 class="image"
                 :style="`background-image: url(`+(article.urlToImage ? article.urlToImage : './static/news.jpg')+`)`"
               ></f7-col>
-              <f7-col width="70" class="headline">{{article.title}}</f7-col>
+              <f7-col width="70" class="headline">{{formatHeadline(article.title)}}</f7-col>
               <f7-col width="15" class="published">{{formatPublishedTime(article.publishedAt)}}</f7-col>
             </f7-row>
           </div>
@@ -618,6 +618,14 @@ export default {
     },
     formatPublishedTime(datetime) {
       return moment(datetime).format('LT')
+    },
+    formatHeadline(headline) {
+      if (headline.length > 150){
+        return headline.substring(0,150) + '...'
+      }
+      else{
+        return headline
+      }
     },
     formatCalendarTime(datetime) {
       return moment(datetime).calendar(null, {
