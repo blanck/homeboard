@@ -1,19 +1,21 @@
 # Homeboard
 
 This dashboard project is a hobby project I created to get a good-looking touchscreen for our kitchen with the latest news, family calendar, stocks and some home automation. I'm running it on a 24" Dell touchscreen powered by a Raspberry Pi 4, 4 GB. The screen is mounted flat on the wall in the kitchen with cables and RPi tucked away behind the monitor.
+
 Feel free to fork, add feature requests, make pull requests and let me know of any ideas on how it can be improved.
 
 ## Sample
 ![Sample dashboard](sample.jpg)
 
 ## Recommended hardware
-Raspberry Pi 4, 2 GB
-Micro HDMI to Standard HDMI cable
-Dell P2418HT Touch 24"
+- Raspberry Pi 4, 2 GB
+- Micro HDMI to Standard HDMI cable
+- [Dell P2418HT Touch 24"](https://www.dell.com/en-us/work/shop/dell-24-touch-monitor-p2418ht/apd/210-alcs/monitors-monitor-accessories)
 
 ## Software structure
-The frontend is running as a static node server powered by Framework7 and VueJS.
-Using a web socket connection the frontend is communicating with a node powered backend server keeping all data up to date from different sources and communicating with devices such as Sonos speakers and home automation.
+The frontend is running as a [static node-server](https://github.com/expressjs/serve-static#readme) powered by [Framework7  and VueJS](https://framework7.io/vue/). 
+
+Using a [web socket](https://github.com/socketio/socket.io#readme) connection, the frontend is communicating with a node-server keeping all data up to date from different sources and communicating with devices such as [Sonos](https://github.com/bencevans/node-sonos) speakers and home automation with [Tibber](https://tibber.com/). The background process is managed by [pm2 process manager](https://pm2.keymetrics.io/).
 
 ## Installation instructions
 
