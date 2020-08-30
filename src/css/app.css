@@ -1,0 +1,422 @@
+:root, :root.theme-dark {
+  --f7-block-margin-vertical: 25px;
+  --f7-block-padding-horizontal: 30px;
+  --f7-toolbar-bg-color: rgba(0,0,0,0.4);
+  --f7-toolbar-link-color: #3e88c4;
+
+  --f7-list-bg-color: transparent;
+  --f7-block-title-text-transform: uppercase;
+  --f7-block-title-font-weight: 500;
+
+  --f7-chip-height: 22px;
+
+  --f7-popup-tablet-width: 900px;
+  --f7-popup-tablet-height: 800px;
+  --f7-popup-tablet-border-radius: .5em;
+
+  --f7-button-fill-bg-color: rgba(0,0,0, 0.6);
+  --f7-font-family: 'Ubuntu';
+
+  --f7-toast-bg-color: rgba(0, 0, 0, 0.8);
+}
+
+
+/* @import url('https://fonts.googleapis.com/css?family=Montserrat&display=swap'); */
+.page-content{
+  background-size: 100% auto;
+  background-position: center 35%;
+  background-blend-mode: darken;
+  background-color: rgba(0,0,0,0.5);
+  transition: background-image 0.5s ease-in-out;
+  height: 100%;
+  overflow: hidden;
+}
+.page-current{
+  background-size: 100% auto;
+  background-position: center 35%;
+  transition: background-image 0.5s ease-in-out;
+}
+.fullbg .page-content{
+   background-blend-mode: unset;
+   background-color: transparent;
+}
+
+.widgets{
+  height: 100%;
+}
+.widgets.block{
+  padding-left: 40px;
+  padding-right: 40px;
+}
+.top.row{
+  margin-top: 3em;
+  text-align: center;
+  height: 18em;
+}
+
+.middle.row{
+  height: 30em;
+}
+
+.bottom.row{
+  margin-top: 5em;
+  text-align: center;
+  height: 15em;
+}
+
+.middle.row .widget{
+  background: rgba(205,215,235,0.8);
+  /* backdrop-filter: saturate(180%) blur(var(--f7-bars-translucent-blur));
+  -webkit-backdrop-filter: blur(10px); */
+  border-radius: .5em;
+  height: 100%;
+  color: #333333;
+}
+
+.middle.row .block-title{
+  color: #555555;
+  font-size: 1.2em;
+}
+.bottom.row .widget .row{
+  margin-bottom: 1em;
+}
+.bottom.row .block-title{
+  margin-top: 0;
+}
+
+/* weather widget */
+.widget{
+  font-weight: bold;
+}
+.widget .title{
+  font-size: 4em;
+}
+.widget .subtitle{
+  margin-top: -.5em;
+  font-size: 2.1em;
+}
+.widget .secondtitle{
+  margin-top: .5em;
+  font-size: 2.5em;
+}
+.widget .details{
+  font-size: 1.7em;
+}
+
+.widget.sonos .row{
+  background: rgba(0,0,0,0.6);
+  margin: 0.4em 0;
+  padding: 2em 0.5em;
+  border-radius: .5em;
+  box-shadow: 1px 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+.widget.sonos .image{
+  border-radius: .3em;
+  width: 7em;
+  height: 7em;
+  margin: 0.3em;
+}
+.widget.sonos .icon{
+  margin-top: .3em;
+  font-size: 4em;
+}
+.widget.sonos .title{
+  margin-top: .1em;
+  font-size: 1.8em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.sonos .artist{
+  margin-top: .2em;
+  font-size: 1.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.sonos .album{
+  margin-top: .3em;
+  font-size: 1.1em;
+  font-weight: 300;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.sonos .track-progress{
+  margin-top: .5em;
+}
+.widget.sonos .controls div{
+  margin-top: .5em;
+  float: left;
+}
+.widget.sonos .controls i{
+  font-size: 2.5em;
+}
+.widget.sonos .track-progress span{
+  transition-duration: 5s;
+}
+
+.widget.weather .image{
+  width: 8em;
+  height: 8em;
+  margin-top: -1em;
+}
+.widget.weather .details .icon{
+  font-size: 1em;
+}
+.widget.weather small{
+  font-weight: 300;
+  font-size: 0.8em;
+}
+
+.widget.news .row{
+  background: rgba(255,255,255,0.3);
+  margin: 0.35em 2em;
+  padding: 0.4em 0.1em;
+  border-radius: 0.3em;
+  border-left: 0.5em solid rgba(255,255,255,0.2);
+  box-shadow: 1px 1px 3px 0 rgba(0, 0, 0, 0.1);
+
+}
+.widget.news .updated{
+  float: right;
+  font-weight: 400;
+  margin-top: 1.5em;
+  margin-right: 2.5em;
+  text-transform: uppercase;
+  color: #445566;
+}
+.widget.news .article-list{
+  max-height: 80%;
+  overflow: auto;
+}
+.widget.news .image{
+  width: 5.3em;
+  height: 3em;
+  background-size: cover;
+  margin: 0.3em;
+  margin-left: 0.6em;
+  border-radius: 0.3em;
+}
+.widget.news .headline{
+  height: 3em;
+  padding-right: .3em;
+  font-size: 1.1em;
+  line-height: 1.2em;
+  display: flex;
+  align-items: center;
+}
+.widget.news .published{
+  display: flex;
+  align-self: flex-end;
+  font-size: 0.9em;
+  color: #888888;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.widget.calendar .row{
+  background: rgba(200,200,200,0.3);
+  margin: 0.4em 0;
+  padding: .88em;
+  line-height: 1.3em;
+  border-radius: 0.3em;
+  border-left: 0.5em solid rgba(100,100,100,0.5);
+  box-shadow: 1px 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+.widget.calendar .row.nextweek{
+  background: rgba(100,255,100,0.3);
+  border-left: 0.5em solid rgba(100,255,100,0.5);
+}
+.widget.calendar .row.sameday{
+  background: rgba(255,100,100,0.3);
+  border-left: 0.5em solid rgba(255,100,100,0.5);
+}
+.widget.calendar .row.nextday{
+  background: rgba(243, 173, 43, 0.3);
+  border-left: 0.5em solid rgba(255, 166, 33, 0.5);
+}
+.widget.calendar .calendar-time{
+  font-weight: 400;
+}
+.widget.calendar .calendar-event{
+  font-size: 1.2em;
+}
+
+.widget.stocks .row{
+  background: rgba(230,230,230,0.2);
+  margin: 0.3em 2em;
+  padding: 0 0.5em;
+  line-height: 3.2em;
+  border-radius: 0.3em;
+  border-left: 0.5em solid rgba(100,100,100,0.5);
+  box-shadow: 1px 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+.widget.stocks .row.INDEX{
+  border-left: 0.5em solid rgba(72, 197, 0, 0.692);
+}
+.widget.stocks .row.ETF{
+  border-left: 0.5em solid rgba(212, 181, 9, 0.616);
+}
+.widget.stocks .row.EQUITY{
+  border-left: 0.5em solid rgba(8, 89, 196, 0.726);
+}
+.widget.stocks .row.FUTURE{
+  border-left: 0.5em solid rgba(8, 189, 196, 0.726);
+}
+.widget.stocks .updated{
+  float: right;
+  margin-top: 1.5em;
+  margin-right: 2.5em;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: #445566;
+}
+.widget.stocks .symbol{
+  font-weight: bold;
+  font-size: 1.4em;
+  font-weight: 500;
+  color: #445566;
+}
+.widget.stocks .name{
+  font-weight: 400;
+  font-size: 1.1em;
+}
+.widget.stocks .price{
+  text-align: right;
+  font-size: 1.2em;
+  font-weight: 400;
+}
+.widget.stocks .chip{
+  border-radius: 0.3em;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  width: 6.7em;
+  height: 3.4em;
+  margin: 0 -0.8em;
+  margin-top: -0.2em;
+  font-weight: bold;
+}
+.widget.stocks .chip .chip-label{
+  font-size: 1.6em;
+  text-align: center;
+}
+
+.widget.forecast .day{
+  width: 100%;
+  text-align: center;
+  clear: both;
+  text-transform: uppercase;
+  font-weight: 400;
+  font-size: 1.3em;
+}
+.widget.forecast .temp{
+  float: right;
+  font-size: 2em;
+  line-height: 3em;
+  margin-left: 3em;
+}
+.widget.forecast .forecast-icon img{
+  position: absolute;
+  filter: invert(1);
+}
+.widget.forecast .wind{
+  clear: both;
+  font-size: 1.2em;
+  padding-top: .7em;
+}
+.widget.forecast .wind i{
+  font-size: 1.4em;
+}
+
+.article-popup .page-content{
+  overflow: auto;
+}
+.article-popup .page-content::-webkit-scrollbar {
+  display: none;
+}
+.article-popup .article-image{
+  max-width: 100%;
+  border-radius: .5em;
+}
+.article-popup .article-ingress{
+  font-style: italic;
+  font-size: 1.2em;
+}
+
+.article-popup .article-content{
+  font-size: 1.2em;
+}
+
+.widget.playlist .col-50{
+  margin-bottom: 1.2em;
+}
+
+.widget.playlist .button .icon{
+  float: left;
+  padding: .4em .2em;
+  opacity: .8;
+}
+
+.widget.home .col{
+  background: rgba(0,0,0,0.6);
+  margin: 0.4em 0;
+  height: 15em;
+  padding: 1em .5em;
+  border-radius: .5em;
+  box-shadow: 1px 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+.widget.home .thermo .temp{
+  margin-top: .1em;
+  font-size: 4em;
+  line-height: 1em;
+}
+.widget.home .thermo .current{
+  font-size: 1.5em;
+  color: #666666;
+  font-weight: 400;
+}
+.widget.home .thermo .fan{
+  position: absolute;
+  padding: .5em;
+}
+.widget.home .thermo .fan .icon{
+  font-size: 2.5em;
+}
+.widget.home .thermo .fan.on .icon{
+  color: #3fcf40;
+} 
+.widget.home .thermo .arrow .icon{
+  font-size: 4.5em;
+  margin: -.2em;
+}
+.widget.home .car{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget.home .car .charge{
+  font-size: 1.5em;
+  max-width: 9em;
+}
+.widget.home .car img{
+  width: 150%;
+  margin: -2em;
+}
+.widget.home .car img.dead{
+  opacity: 0.3;
+}
+.widget.home .electricity{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+} 
+
+
+.toast.connected{
+  background: rgba(30,190,0,0.6);
+}
+.toast.disconnected{
+  background: rgba(190,30,0, 0.7);
+}
