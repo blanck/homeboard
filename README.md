@@ -1,26 +1,26 @@
 # Homeboard
 
-This dashboard project is a hobby project I created to get a good looking touchscreen for our kitchen with latest news, family calendar, stocks and some simple home automation. I'm running it on a 24 inch Dell touchscreen powered by a Raspberry Pi 4 4GB. The screen is mounted flat on the wall in the kitchen with cables and RPi tucked away behind the monitor.
+This dashboard project is a hobby project I created to get a good-looking touchscreen for our kitchen with the latest news, family calendar, stocks and some home automation. I'm running it on a 24" Dell touchscreen powered by a Raspberry Pi 4, 4 GB. The screen is mounted flat on the wall in the kitchen with cables and RPi tucked away behind the monitor.
 Feel free to fork, add feature requests, make pull requests and let me know of any ideas on how it can be improved.
 
 ## Sample
 ![Sample dashboard](sample.jpg)
 
 ## Recommended hardware
-Raspberry Pi 4 2GB
+Raspberry Pi 4, 2 GB
 Micro HDMI to Standard HDMI cable
 Dell P2418HT Touch 24"
 
 ## Software structure
-The frontend is runned as a static node server powered by Framework7 and VueJS.
-Using a websocket connection the frontend is communicating with a node powered backend server keeping all data up to date from different sources and communicating with devices such as Sonos speakers and home automation.
+The frontend is running as a static node server powered by Framework7 and VueJS.
+Using a web socket connection the frontend is communicating with a node powered backend server keeping all data up to date from different sources and communicating with devices such as Sonos speakers and home automation.
 
 ## Installation instructions
 
 ### On a fresh Raspberry Pi installation, start by changing your password
     passwd
 
-### Change hostname to "homeboard"
+### Change host name to "homeboard"
 Change last row to "homeboard"
 ```
 sudo nano /etc/hosts
@@ -66,7 +66,7 @@ sudo nano /etc/hostname
 ### Remove welcome screen at boot
     sudo rm /etc/xdg/autostart/piwiz.desktop
 
-### Turn off wifi power save mode
+### Turn off Wi-Fi power save mode
     sed -i "/exit 0/isudo iw wlan0 set power_save off" /etc/rc.local
 
 ### Autostart bash script on boot
@@ -77,7 +77,7 @@ sudo nano /etc/hostname
     echo "tmpfs    /var/log    tmpfs    defaults,noatime,nosuid,mode=0755,size=100m    0 0" | sudo tee -a /etc/fstab
 
 # Configuration
-### Setup your config.js file
+### Set up your own config.js file
 Copy the sample configuration file to your own local version protected from the public code
 ```
 cp ~/homeboard/config.sample.js ~/homeboard/config.js
@@ -86,6 +86,23 @@ Edit the parameters, get your own API keys for services and change parameters to
 ```
 nano ~/homeboard/config.js
 ```
+
+# Local development
+If you want to modify the code, configuration or add widgets it's recommended cloning a local copy of the repository on your computer.
+```
+git clone git@github.com:blanck/homeboard.git ~/Development/homeboard
+cd ~/Development/homeboard/
+npm install
+```
+Open two terminal windows and start the backend server in the first one
+```
+node server.js
+```
+Open the second terminal and run the development version of the dashboard
+```
+npm run dev
+```
+
 
 # Install splash screen
 ### Edit cmdline.txt to enable splash screen logo
@@ -105,7 +122,7 @@ nano ~/homeboard/config.js
     export DISPLAY=:0 && pcmanfm --set-wallpaper /opt/splash.png
 
 # Troubleshooting
-### OTHER SETTINGS TO TRY ONE BY ONE WHEN SCREEN LOOKS BAD
+### Other settings to try, one-by-one when screen looks bad
     sudo sed -i '/#disable_overscan/ c\disable_overscan=1' /boot/config.txt 
     # sudo nano /boot/config.txt 
     # disable_overscan=1
