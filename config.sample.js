@@ -58,7 +58,7 @@ config.netatmo = {
 		// Find with browser inspector at https://weathermap.netatmo.com/
 		"device_id": "70:ee:50:28:b7:a2", // Example: 70:aa:bb:33:00:ee
 		"module_id": "05:00:00:06:b1:30", // Example: 02:03:00:33:00:ee
-		"bearer": "52d42bfc1777599b298b456c|4b157f5a32cd79d1b46d4fb4a2ff10a0", // Example: 52xxxxxxxxxxxxxxx|4ayyyyyyyyyyyy
+		"bearer": "52d42bfc1777599b298b456c|567441d6b0f7282c9250a7cfe4075761", // Example: 52xxxxxxxxxxxxxxx|4ayyyyyyyyyyyy
 		"locale": "en-US"
 	}
 };
