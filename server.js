@@ -22,13 +22,16 @@ if (config.netatmo.forecast.device_id){
 	//Fetch Netatmo public access token
 	request('https://weathermap.netatmo.com/', (err, res, body) => {
 		if (err) { return console.log(err) }
-		if (body.indexOf('window.config.accessToken') > -1) {
-			let tokenplace = body.indexOf('window.config.accessToken')
+		if (body.indexOf('accessToken') > -1) {
+			let tokenplace = body.indexOf('accessToken')
 			let tokenstart = body.indexOf('"', tokenplace)+1
 			let tokenend = body.indexOf('"', tokenstart+1)
 			let access_token = body.substring(tokenstart,tokenend)
 			console.log('Got weather token')
 			config.netatmo.forecast.bearer = access_token
+		}
+		else{
+			console.log('Could not get weather tokenstart')
 		}
 	})
 }
