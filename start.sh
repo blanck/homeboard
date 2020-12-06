@@ -14,5 +14,5 @@ cd ~/homeboard/ && npm run build-prod
 sleep 5
 pm2 restart server
 #pm2 restart "npm run dev"
-sleep 5
+sleep 30
 chromium-browser --kiosk --start-fullscreen --app=http://homeboard.local:8080 &
