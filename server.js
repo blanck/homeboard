@@ -18,23 +18,6 @@ var netatmoapi = null
 if (config.netatmo.client_id){
 	netatmoapi = new netatmo(config.netatmo);
 }
-if (config.netatmo.forecast.device_id){
-	//Fetch Netatmo public access token
-	request('https://weathermap.netatmo.com/', (err, res, body) => {
-		if (err) { return console.log(err) }
-		if (body.indexOf('accessToken') > -1) {
-			let tokenplace = body.indexOf('accessToken')
-			let tokenstart = body.indexOf('"', tokenplace)+1
-			let tokenend = body.indexOf('"', tokenstart+1)
-			let access_token = body.substring(tokenstart,tokenend)
-			console.log('Got weather token')
-			config.netatmo.forecast.bearer = access_token
-		}
-		else{
-			console.log('Could not get weather tokenstart')
-		}
-	})
-}
 
 var yahooFinance = require('yahoo-finance');
 var NewsAPI = require('newsapi')
@@ -121,7 +104,14 @@ io.on('connection', function (socket) {
 	})
 	socket.on('config', function(){
 		console.log('Send config')
-		io.emit('CONFIG', config)
+		if (config.netatmo.forecast.device_id){
+			getWeatherToken(function(){
+				io.emit('CONFIG', config)
+			})
+		}
+		else{
+			io.emit('CONFIG', config)
+		}
 	})
 
 	socket.on('weather', function () {
@@ -314,6 +304,26 @@ io.on('connection', function (socket) {
 
 })
 
+// Get weather token
+var getWeatherToken = function (callback) {
+	//Fetch Netatmo public access token
+	return request('https://weathermap.netatmo.com/', (err, res, body) => {
+		if (err) { return console.log(err) }
+		if (body.indexOf('accessToken') > -1) {
+			let tokenplace = body.indexOf('accessToken')
+			let tokenstart = body.indexOf('"', tokenplace)+1
+			let tokenend = body.indexOf('"', tokenstart+1)
+			let access_token = body.substring(tokenstart,tokenend)
+			console.log('Got weather token', access_token)
+			config.netatmo.forecast.bearer = access_token
+			callback()
+		}
+		else{
+			console.log('Could not get weather tokenstart')
+			callback()
+		}
+	})
+};
 
 // Get weather station data
 var getStationsData = function (err, devices) {

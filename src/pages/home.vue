@@ -951,7 +951,6 @@ export default {
           closeTimeout: 5000,
           cssClass: 'connected'
         }).open()
-        document.location=document.location
       })
       this.socket.on('refresh', () => {
         document.location.reload()
