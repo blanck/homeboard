@@ -449,7 +449,7 @@ export default {
     getBackground() {
       var self = this
       let hour = new Date().getHours()
-      if (this.config && this.config.cam.url && hour < 22 && hour > 6) {
+      if (this.config && this.config.cam && this.config.cam.url && hour < 22 && hour > 6) {
         let cachebuster = Math.round(new Date().getTime() / 1000);
         let imgurl = this.config.cam.url + (this.config.cam.url.indexOf('?') > -1 ? '&' : '?') + 'counter=' + cachebuster
         if (cachebuster % 2 || !this.show_background) {
@@ -470,6 +470,9 @@ export default {
             }, 1000)
           }
         }
+      }
+      else if (this.config && this.config.background && this.config.background.url) {
+        this.$$('.page-content,.container::before')[0].style.backgroundImage = 'url(' + this.config.background.url + ')'
       }
       else {
         this.$$('.page-content,.container::before')[0].style.backgroundImage = 'url(./static/night.jpg)'

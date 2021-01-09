@@ -24,7 +24,11 @@ config.time = {
 };
 config.cam = {
 	// Add live webcamera URL
-	"url": "http://83.140.123.181/ImageHarvester/Images/copyright!-bastad_1_live.jpg"
+	// "url": "http://83.140.123.181/ImageHarvester/Images/copyright!-bastad_1_live.jpg"
+};
+config.background = {
+	// Add static background URL
+	"url": "https://hotelskansen.se/app/uploads/sites/6/hotel-skansen-bastad-20160121-vinter-0016.jpg"
 };
 config.web = {
 	"port": 8080,
@@ -144,7 +148,8 @@ config.playlist = {
 		"icon": "music_note_2",
 		"type": "spotify",
 		"list": [
-			["spotify:user:spotify:playlist:1aQ5dknXwy7SMmxo6d4C8B", "Italian dinner"]
+			["spotify:user:spotify:playlist:1aQ5dknXwy7SMmxo6d4C8B", "Italian dinner"],
+			["spotify:user:spotify:playlist:37i9dQZF1DX4xuWVBs4FgJ", "Dinner with friends"]
 		]
 	},
 	"kids": {
