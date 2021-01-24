@@ -143,8 +143,8 @@
             :class="quote.price.quoteType"
             @click="showStock(index)"
           >
-            <f7-col width="15" class="symbol">{{formatStockSymbol(quote.price.symbol)}}</f7-col>
-            <f7-col width="45" class="name">{{quote.price.shortName}}</f7-col>
+            <f7-col width="20" class="symbol">{{formatStockSymbol(quote.price.symbol)}}</f7-col>
+            <f7-col width="40" class="name">{{quote.price.shortName}}</f7-col>
             <f7-col
               width="20"
               class="price"
