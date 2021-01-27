@@ -64,6 +64,7 @@ Sonos.DeviceDiscovery().once('DeviceAvailable', (device) => {
 });
 
 const io = require('socket.io')(server);
+io.set('origins', ['http://homeboard.local:8080','http://localhost:8080']);
 io.on('connection', function (socket) {
 	// console.log(socket.id)
 	if (sonos){

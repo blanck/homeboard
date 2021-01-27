@@ -8,6 +8,7 @@ config.sonos = {};
 config.tibber1 = {};
 config.tibber2 = {};
 config.cam = {};
+config.background = {};
 config.quotes = [];
 config.time = {};
 config.web = {};
@@ -17,6 +18,8 @@ config.location = {
 	"lat": 56.4277887,
 	"lng": 12.842306
 };
+// Set language for weather and dates - ex. 'en', 'sv'
+config.language = 'en';
 
 config.quotes = ["^GSPC", "^DJI", "^IXIC", "^RUT", "^OMX", "SI=F", "GC=F"];
 config.time = {
@@ -38,7 +41,7 @@ config.weather = {
 	"openweathermap": {
 		// Register for API key at https://home.openweathermap.org/api_keys
 		"key": "83032a45ab76e8ddbd826905caf45b31",
-		"url": "http://api.openweathermap.org/data/2.5/weather?lat="+config.location.lat+"&lon="+config.location.lng+"&APPID=",
+		"url": "http://api.openweathermap.org/data/2.5/weather?lang="+config.language+"&lat="+config.location.lat+"&lon="+config.location.lng+"&APPID=",
 	},
 	"met_no": {
 		"url": "https://api.met.no/weatherapi/locationforecast/2.0/?lat="+config.location.lat+"&lon="+config.location.lng

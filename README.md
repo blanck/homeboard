@@ -46,20 +46,24 @@ sudo nano /etc/hostname
 ### Install pm2 background process manager
     npm install -g pm2
     pm2 startup
-    sudo env PATH=$PATH:/home/pi/.nvm/versions/node/v14.5.0/bin /home/pi/.nvm/versions/node/v14.5.0/lib/node_modules/pm2/bin/pm2 startup systemd -u pi --hp /home/pi
+    # Copy and run the suggested command from the previous output - example:
+    # sudo env PATH=$PATH:/home/pi/.nvm/versions/node/v14.5.0/bin /home/pi/.nvm/versions/node/v14.5.0/lib/node_modules/pm2/bin/pm2 startup systemd -u pi --hp /home/pi
 
 ### Clone git repository with latest code for the dashboard
-    git clone git@github.com:blanck/homeboard.git ~/homeboard
+    git clone https://github.com//blanck/homeboard.git ~/homeboard
     cd ~/homeboard
     git remote set-url origin git@github.com:blanck/homeboard.git
 
 ### Test to pull code from remote repo
     cd ~/homeboard/ && git reset HEAD --hard
-    cd ~/homeboard/ && git pull --no-edit git@github.com:blanck/homeboard.git
+    cd ~/homeboard/ && git pull --no-edit https://github.com/blanck/homeboard.git
 
 ### Install dependencies from repo
     npm install
     npm update
+
+### Update caniuse library
+    npx browserslist@latest --update-db
 
 ### Start background server (pm2)
     pm2 start '/home/pi/homeboard/server.js' 
@@ -69,7 +73,7 @@ sudo nano /etc/hostname
     sudo rm /etc/xdg/autostart/piwiz.desktop
 
 ### Turn off Wi-Fi power save mode
-    sed -i "/exit 0/isudo iw wlan0 set power_save off" /etc/rc.local
+    sudo sed -i "/exit 0/isudo iw wlan0 set power_save off" /etc/rc.local
 
 ### Autostart bash script on boot
     echo "@sh /home/pi/homeboard/start.sh &" | sudo tee -a /etc/xdg/lxsession/LXDE-pi/autostart
@@ -87,6 +91,18 @@ cp ~/homeboard/config.sample.js ~/homeboard/config.js
 Edit the parameters, get your own API keys for services and change parameters to match your own preferences.
 ```
 nano ~/homeboard/config.js
+# ctrl + x - yes to save
+# then restart server from bottom of the screen or in terminal with
+pm2 restart server
+```
+
+# Connect to homeboard
+You will have to connect to the homeboard computer using SSH.
+Open up a terminal on your computer (PC/MAC)
+```
+ssh pi@homeboard.local
+# enter yes first time then password
+cd homeboard
 ```
 
 # Local development
@@ -115,7 +131,8 @@ npm run dev
     # Install splash file handler
     sudo apt-get -y install fbi
     # Install splashservice from drive
-    sudo wget -O /etc/systemd/system/splashscreen.service "https://drive.google.com/uc?export=download&id=13eWP-EtHfgUL6yl2-ptZhjkT3PJuR8rj"
+    sudo pip install gdown
+    sudo gdown -O /etc/systemd/system/splashscreen.service https://drive.google.com/uc?export=download\&id=13eWP-EtHfgUL6yl2-ptZhjkT3PJuR8rj
     # Download png file for splashscreen
     sudo cp ~/homeboard/assets-src/splash.png /opt/splash.png
     # Enable splash screen
@@ -134,5 +151,18 @@ npm run dev
     # hdmi_group=1
     # hdmi_mode=31
 
-### On caniuse error
-    npx browserslist@latest --update-db
+### Manually running server
+    # Stop pm2 server
+    pm2 stop server
+    cd ~/homeboard
+    node server.js
+    # troubleshoot error
+    # Start pm2 server
+    pm2 start server
+
+
+### Tips
+    # Taking remote screenshots from your local computer
+    sudo apt install -y maim
+    ssh pi@homeboard.local 'DISPLAY=:0.0 maim' > screen.png
+

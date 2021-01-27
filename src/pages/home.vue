@@ -16,7 +16,7 @@
           </f7-row>
           <f7-row>
             <f7-col>
-              <div class="subtitle" v-if="current_condition">{{current_condition.main}}</div>
+              <div class="subtitle" v-if="current_condition">{{formatCondition(current_condition.description)}}</div>
             </f7-col>
           </f7-row>
           <f7-row>
@@ -49,7 +49,7 @@
               </div>
               <small
                 v-if="weather && weather.outdoor"
-              >Updated {{ formatFromNow(weather.outdoor.time_utc) }}</small>
+              >{{ translate('updated') }} {{ formatFromNow(weather.outdoor.time_utc) }}</small>
             </f7-col>
           </f7-row>
         </f7-col>
@@ -108,7 +108,7 @@
       <f7-row class="middle">
         <f7-col width="35" class="widget news">
           <div class="updated">{{formatLastNewsUpdated(articles)}}</div>
-          <f7-block-title>News</f7-block-title>
+          <f7-block-title>{{ translate('news') }}</f7-block-title>
           <div class="article-list">
             <f7-row v-for="(article, index) in articles" :key="index" @click="showArticle(index)">
               <f7-col
@@ -123,7 +123,7 @@
         </f7-col>
         <f7-col width="30" class="widget calendar">
           <f7-block>
-            <f7-block-title>Calendar</f7-block-title>
+            <f7-block-title>{{ translate('calendar') }}</f7-block-title>
             <f7-row
               v-for="(event, index) in events"
               :key="index"
@@ -136,7 +136,7 @@
         </f7-col>
         <f7-col width="35" class="widget stocks">
           <div class="updated">{{formatLastStockUpdated(quotes)}}</div>
-          <f7-block-title>Stocks</f7-block-title>
+          <f7-block-title>{{ translate('stocks') }}</f7-block-title>
           <f7-row
             v-for="(quote, index) in quotes"
             :key="index"
@@ -207,30 +207,14 @@
           <f7-block-title></f7-block-title>
           <f7-row v-if="this.config">
             <f7-col width="50" v-for="(item, index) in this.config.playlist" :key="index">
-              <f7-button :icon-f7="item.icon" @click="startPlaylist(item)" large fill>{{item.title}}</f7-button>
+              <f7-button :icon-f7="item.icon" :popover-open="'.popover-playlist-'+index" large fill>{{item.title}}</f7-button>
             </f7-col>
-            <!-- <f7-col>
-              <f7-button icon-f7="music_note_2" @click="startPlaylist('breakfast')" large fill>BREAKFAST</f7-button>
-            </f7-col>
-            <f7-col>
-              <f7-button icon-f7="music_note_2" @click="startPlaylist('dinner')" large fill>DINNER</f7-button>
-            </f7-col>
-          </f7-row>
-          <f7-row class="justify-content-space-around">
-            <f7-col>
-              <f7-button icon-f7="antenna_radiowaves_left_right" @click="startPlaylist('radio')" large fill>RADIO</f7-button>
-            </f7-col>
-            <f7-col>
-              <f7-button icon-f7="music_note_2" @click="startPlaylist('cooking')" large fill>COOKING</f7-button>
-            </f7-col>
-          </f7-row>
-          <f7-row class="justify-content-space-around">
-            <f7-col>
-              <f7-button icon-f7="music_note_2" @click="startPlaylist('kids')" large fill>KIDS</f7-button>
-            </f7-col>
-            <f7-col>
-              <f7-button icon-f7="music_note_2" @click="startPlaylist('acoustic')" large fill>ACOUSTIC</f7-button>
-            </f7-col>-->
+            <f7-popover :class="'popover-playlist-'+index" v-for="(item, index) in this.config.playlist" :key="'popup-'+index" :backdrop="false">
+              <f7-list>
+                <f7-list-item @click="startPlaylistItem(index,item,listItem)" v-for="(listItem, listIndex) in item.list" :key="index+'-'+listIndex" :title="listItem[1]"></f7-list-item>
+              </f7-list>
+            </f7-popover>
+
           </f7-row>
         </f7-col>
         <f7-col width="45" class="widget home">
@@ -316,20 +300,20 @@
     </f7-block>
     <!-- Toolbar-->
     <f7-toolbar bottom>
-      <f7-link @click="rebootServer">Reboot</f7-link>
-      <f7-link @click="restartServer">Restart server</f7-link>
+      <f7-link @click="rebootServer">{{ translate('reboot') }}</f7-link>
+      <f7-link @click="restartServer">{{ translate('restart') }}</f7-link>
       <f7-link
         @click="showBackground"
-      >{{this.show_background ? 'Show dashboard' : 'Show background'}}</f7-link>
-      <f7-link @click="sleepServer">Sleep</f7-link>
-      <f7-link @click="refreshPage">Refresh page</f7-link>
+      >{{this.show_background ? translate('showdashboard') : translate('showbackground')}}</f7-link>
+      <f7-link @click="sleepServer">{{ translate('sleep') }}</f7-link>
+      <f7-link @click="refreshPage">{{ translate('refresh') }}</f7-link>
     </f7-toolbar>
 
     <f7-popup class="article-popup" push>
       <f7-page v-if="current_article">
         <f7-navbar :title="current_article.title">
           <f7-nav-right>
-            <f7-link popup-close>Close</f7-link>
+            <f7-link popup-close>{{ translate('close') }}</f7-link>
           </f7-nav-right>
         </f7-navbar>
         <f7-block class="justify-content-center">
@@ -402,7 +386,35 @@ export default {
       asleep: false,
       config: null,
       current_condition: null,
-      socket: io(document.location.hostname + ':3000')
+      socket: io(document.location.hostname + ':3000'),
+      translations: {
+        en: {
+          news: 'News',
+          calendar: 'Calendar',
+          stocks: 'Stocks',
+          updated: 'Updated',
+          reboot: 'Reboot',
+          restart: 'Restart server',
+          showbackground: 'Show background',
+          showdashboard: 'Show dashboard',
+          sleep: 'Sleep',
+          refresh: 'Refresh page',
+          close: 'Close'
+        },
+        sv: {
+          news: 'Nyheter',
+          calendar: 'Kalendar',
+          stocks: 'Börs',
+          updated: 'Uppdaterad',
+          reboot: 'Starta om',
+          restart: 'Ladda om server',
+          showbackground: 'Visa bakgrund',
+          showdashboard: 'Visa board',
+          sleep: 'Stäng skärm',
+          refresh: 'Ladda om sidan',
+          close: 'Stäng'
+        }
+      }
     }
   },
   computed: {
@@ -542,16 +554,27 @@ export default {
     getWeatherIcon(symbol) {
       return weatherfunctions.getIcon(symbol)
     },
+    translate(val){
+      if (this.config && this.config.language){
+        return this.translations[this.config.language][val]
+      }
+      else{
+        return this.translations['en'][val]
+      }
+    },
     formatFromNow(datetime) {
       return moment.utc(datetime * 1000).fromNow()
     },
     formatWind(windkph) {
       if (windkph) {
-        return (windkph / 3.6).toFixed(0)
+        return (windkph / 3.6 / 3.6).toFixed(0)
       }
       else {
         return '- '
       }
+    },
+    formatCondition(weather){
+      return weather.charAt(0).toUpperCase() + weather.slice(1)
     },
     formatPressure(pre, trend) {
       return pre.toFixed(0)
@@ -701,7 +724,12 @@ export default {
     },
     updateTime() {
       this.current_time = moment().format('LT')
-      this.current_day = moment().format('MMMM Do')
+      if (this.config.language == 'sv'){
+        this.current_day = moment().format('D MMMM')
+      }
+      else{
+        this.current_day = moment().format('MMMM Do')
+      }
       if (this.config && this.config.time) {
         this.remote_time = moment().tz(this.config.time.remotezone).format('LT')
       }
@@ -852,6 +880,17 @@ export default {
         cssClass: 'connected'
       }).open()
     },
+    startPlaylistItem(index, item, listItem){
+      if (item.type == 'spotify') {
+        this.socket.emit('playURI', listItem[0])
+        this.showPlaying(listItem[1], item.icon)
+      }
+      else if (item.type == 'radio') {
+        this.socket.emit('playRadio', listItem)
+        this.showPlaying(listItem[1], item.icon)
+      }
+      this.$f7.popup.get('.popover-playlist-'+index).close()
+    },
     startPlaylist(item) {
       if (item.type == 'spotify') {
         let selected = item.list[(Math.random() * item.list.length) | 0]
@@ -928,6 +967,9 @@ export default {
       })
       this.socket.on('CONFIG', (config) => {
         this.config = config
+        if (this.config.language){
+          moment.locale(this.config.language)          
+        }
 
         // Load timers after config
         this.updateTime()
