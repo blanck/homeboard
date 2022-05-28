@@ -121,7 +121,7 @@
             </f7-row>
           </div>
         </f7-col>
-        <f7-col width="30" class="widget calendar">
+        <f7-col width="65" class="widget calendar">
           <f7-block>
             <f7-block-title>{{ translate('calendar') }}</f7-block-title>
             <f7-row
@@ -134,7 +134,7 @@
             </f7-row>
           </f7-block>
         </f7-col>
-        <f7-col width="35" class="widget stocks">
+        <f7-col width="0" class="widget stocks">
           <div class="updated">{{formatLastStockUpdated(quotes)}}</div>
           <f7-block-title>{{ translate('stocks') }}</f7-block-title>
           <f7-row

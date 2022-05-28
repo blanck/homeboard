@@ -15,14 +15,14 @@ var sonos = null
 
 var netatmo = require('netatmo')
 var netatmoapi = null
-if (config.netatmo.client_id){
+if (config.netatmo.client_id) {
 	netatmoapi = new netatmo(config.netatmo);
 }
 
 var yahooFinance = require('yahoo-finance');
 var NewsAPI = require('newsapi')
 var newsapi = null
-if (config.newsapi.key){
+if (config.newsapi.key) {
 	newsapi = new NewsAPI(config.newsapi.key)
 }
 
@@ -31,43 +31,43 @@ const moment = require('moment-timezone')
 
 var app = express()
 const server = app.listen(config.web.socket, function () {
-	console.log('Server listening on port '+config.web.socket+'.')
+	console.log('Server listening on port ' + config.web.socket + '.')
 })
 
 //Discover sonos kitchen device ip
 Sonos.DeviceDiscovery().once('DeviceAvailable', (device) => {
 	sonos = new Sonos.Sonos(device.host)
 	sonos.getAllGroups().then(groups => {
-	  groups.forEach(group => {
-		if(group.Name.substring(0,config.sonos.group.length) == config.sonos.group){
-			sonos = new Sonos.Sonos(group.host)
-			sonos.setSpotifyRegion(config.sonos.region)
+		groups.forEach(group => {
+			if (group.Name.substring(0, config.sonos.group.length) == config.sonos.group) {
+				sonos = new Sonos.Sonos(group.host)
+				sonos.setSpotifyRegion(config.sonos.region)
 
-			sonos.on('CurrentTrack', track => {
-				// console.log('Sonos Track changed to %s by %s', track)
-				io.emit('SONOS_TRACK', track)
-			})
+				sonos.on('CurrentTrack', track => {
+					// console.log('Sonos Track changed to %s by %s', track)
+					io.emit('SONOS_TRACK', track)
+				})
 
-			sonos.on('PlayState', state => {
-				// console.log('Sonos state changed to %s.', state)
-				io.emit('SONOS_STATE', state)
-			})
-			sonos.on('Volume', volume => {
-  				io.emit('SONOS_VOLUME', volume)
-			})
+				sonos.on('PlayState', state => {
+					// console.log('Sonos state changed to %s.', state)
+					io.emit('SONOS_STATE', state)
+				})
+				sonos.on('Volume', volume => {
+					io.emit('SONOS_VOLUME', volume)
+				})
 
-		}
-	  })
+			}
+		})
 	}).catch(err => {
-	  console.warn('Error loading topology %s', err)
+		console.warn('Error loading topology %s', err)
 	})
 });
 
 const io = require('socket.io')(server);
-io.set('origins', ['http://homeboard.local:8080','http://localhost:8080']);
+io.set('origins', ['http://homeboard.local:8080', 'http://localhost:8080', 'http://192.168.68.134:8080']); //erik: temporarily set to static ip on macbook-pro
 io.on('connection', function (socket) {
 	// console.log(socket.id)
-	if (sonos){
+	if (sonos) {
 		sonos.currentTrack().then((track) => {
 			io.emit('SONOS_TRACK', track)
 		})
@@ -87,36 +87,36 @@ io.on('connection', function (socket) {
 		});
 	})
 	socket.on('news', function () {
-		if (newsapi){
+		if (newsapi) {
 			newsapi.v2.topHeadlines(config.newsapi.headlines).then(response => {
-				let articles = response.articles.filter(function(el) {
+				let articles = response.articles.filter(function (el) {
 					let keeparticle = true;
 					config.newsapi.exclude.forEach(function (word) {
-						if (el.title.toLowerCase().indexOf(word) > -1){
+						if (el.title.toLowerCase().indexOf(word) > -1) {
 							keeparticle = false;
 							return;
 						}
-					});						
+					});
 					return keeparticle;
 				})
 				io.emit('NEWS', articles)
 			});
 		}
 	})
-	socket.on('config', function(){
+	socket.on('config', function () {
 		console.log('Send config')
-		if (config.netatmo.forecast.device_id){
-			getWeatherToken(function(){
+		if (config.netatmo.forecast.device_id) {
+			getWeatherToken(function () {
 				io.emit('CONFIG', config)
 			})
 		}
-		else{
+		else {
 			io.emit('CONFIG', config)
 		}
 	})
 
 	socket.on('weather', function () {
-		if (netatmoapi){
+		if (netatmoapi) {
 			netatmoapi.getStationsData(config.netatmo.options, function (err, devices) {
 
 			})
@@ -173,19 +173,19 @@ io.on('connection', function (socket) {
 			console.log('Started next %j', result)
 		}).catch(err => { console.log('Error occurred %s', err) })
 	})
-	socket.on('playshuffle', function(){
-	  	console.log('Set playmode shuffle')
+	socket.on('playshuffle', function () {
+		console.log('Set playmode shuffle')
 		sonos.setPlayMode('SHUFFLE').then(success => {
-		  console.log('Changed playmode success')
+			console.log('Changed playmode success')
 		}).catch(err => { console.log('Error occurred %s', err) })
 	})
-	socket.on('volumedown', function(){
+	socket.on('volumedown', function () {
 		sonos.adjustVolume(-1)
 	})
-	socket.on('volumeup', function(){
+	socket.on('volumeup', function () {
 		sonos.adjustVolume(1)
 	})
-	socket.on('gettrack', function(){
+	socket.on('gettrack', function () {
 		sonos.currentTrack().then((track) => {
 			io.emit('SONOS_TRACK', track)
 		})
@@ -211,7 +211,7 @@ io.on('connection', function (socket) {
 	})
 	socket.on('calendar', function () {
 		var calevents = [];
-		if (config.calendar.shared.url){
+		if (config.calendar.shared.url) {
 			ical.async.fromURL(config.calendar.shared.url).then((parsedCal) => {
 				const events = Object.values(parsedCal).filter(el => el.type === config.calendar.shared.type)
 				for (const event of events) {
@@ -229,7 +229,7 @@ io.on('connection', function (socket) {
 						const { start, summary } = event
 						const startDate = moment(start).utc().toDate()
 						const diff = moment(startDate).diff(new Date(), 'days')
-						if ('val' in event.summary){
+						if ('val' in event.summary) {
 							event.summary = event.summary.val;
 						}
 						if (diff >= 0 && diff < config.calendar.holiday.days) {
@@ -238,14 +238,14 @@ io.on('connection', function (socket) {
 					}
 
 					calevents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-					calevents = calevents.slice(0,7);
+					calevents = calevents.slice(0, 7);
 					console.log('Calendar update');
 					io.emit('CALENDAR', calevents);
 
 				})
 			})
 		}
-		else if (config.calendar.holiday.url){
+		else if (config.calendar.holiday.url) {
 			//Fetch holiday calendar
 			ical.async.fromURL(config.calendar.holiday.url).then((parsedCal) => {
 				const events = Object.values(parsedCal).filter(el => el.type === config.calendar.holiday.type)
@@ -253,8 +253,8 @@ io.on('connection', function (socket) {
 					const { start, summary } = event
 					const startDate = moment(start).utc().toDate()
 					const diff = moment(startDate).diff(new Date(), 'days')
-					console.log(diff,startDate)
-					if ('val' in event.summary){
+					console.log(diff, startDate)
+					if ('val' in event.summary) {
 						event.summary = event.summary.val;
 					}
 					if (diff >= 0 && diff < config.calendar.holiday.days) {
@@ -263,34 +263,34 @@ io.on('connection', function (socket) {
 				}
 
 				calevents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-				calevents = calevents.slice(0,7);
+				calevents = calevents.slice(0, 7);
 				io.emit('CALENDAR', calevents);
 			})
 		}
 	})
-	
+
 	socket.on('tibber', function (mode) {
-		if (tibberQuery){
+		if (tibberQuery) {
 			tibberQuery.query("query {viewer { homes {      currentSubscription{        id validFrom validTo status priceInfo{ current{ total energy tax startsAt currency level }}}}} }").then(res => {
-				if (res.viewer && res.viewer.homes){
+				if (res.viewer && res.viewer.homes) {
 					io.emit('TIBBER', res.viewer.homes[0]);
 				}
 			})
 		}
-	})	
+	})
 	socket.on('tibber2', function (mode) {
-		if (tibberQuery2){
-			tibberQuery2.query("{me {home(id:\""+config.tibber2.homeId+"\") {    thermostats { state{ comfortTemperature } temperatureSensor { measurement { value } } }    inverter(id:\""+config.tibber2.inverter + "\") {bubble {  value  percent} }  inverterProduction (id:\""+config.tibber2.production+"\"){keyFigures {  valueText  unitText  description} }    }}}").then(res=>{
-				if (res.me){
+		if (tibberQuery2) {
+			tibberQuery2.query("{me {home(id:\"" + config.tibber2.homeId + "\") {    thermostats { state{ comfortTemperature } temperatureSensor { measurement { value } } }    inverter(id:\"" + config.tibber2.inverter + "\") {bubble {  value  percent} }  inverterProduction (id:\"" + config.tibber2.production + "\"){keyFigures {  valueText  unitText  description} }    }}}").then(res => {
+				if (res.me) {
 					io.emit('TIBBER2', res.me.home);
 				}
 			})
 		}
 	})
 	socket.on('tibber3', function (mode) {
-		if (tibberQuery2){
-			tibberQuery2.query("{me {home(id:\""+config.tibber2.homeId+"\") {    electricVehicles {battery {percent} isAlive imgUrl batteryText}    }}}").then(res=>{
-				if (res.me){
+		if (tibberQuery2) {
+			tibberQuery2.query("{me {home(id:\"" + config.tibber2.homeId + "\") {    electricVehicles {battery {percent} isAlive imgUrl batteryText}    }}}").then(res => {
+				if (res.me) {
 					io.emit('TIBBER3', res.me.home);
 				}
 			})
@@ -298,9 +298,9 @@ io.on('connection', function (socket) {
 	})
 	socket.on('setthermo', function (temp) {
 		console.log('Set thermostat ', temp)
-		tibberQuery2.query("mutation { me { home(id: \""+config.tibber2.homeId+"\") { thermostat(id: \""+config.tibber2.thermostat+"\") { setState(comfortTemperature: "+temp+") }    }  } }").then(res=>{
+		tibberQuery2.query("mutation { me { home(id: \"" + config.tibber2.homeId + "\") { thermostat(id: \"" + config.tibber2.thermostat + "\") { setState(comfortTemperature: " + temp + ") }    }  } }").then(res => {
 			// console.log(JSON.stringify(res, null, 2))
-		})		
+		})
 	})
 
 })
@@ -312,14 +312,14 @@ var getWeatherToken = function (callback) {
 		if (err) { return console.log(err) }
 		if (body.indexOf('accessToken') > -1) {
 			let tokenplace = body.indexOf('accessToken')
-			let tokenstart = body.indexOf('"', tokenplace)+1
-			let tokenend = body.indexOf('"', tokenstart+1)
-			let access_token = body.substring(tokenstart,tokenend)
+			let tokenstart = body.indexOf('"', tokenplace) + 1
+			let tokenend = body.indexOf('"', tokenstart + 1)
+			let access_token = body.substring(tokenstart, tokenend)
 			console.log('Got weather token', access_token)
 			config.netatmo.forecast.bearer = access_token
 			callback()
 		}
-		else{
+		else {
 			console.log('Could not get weather tokenstart')
 			callback()
 		}
@@ -352,7 +352,7 @@ var parseStationData = function (device) {
 		console.log(device)
 	}
 }
-if (netatmoapi){
+if (netatmoapi) {
 	netatmoapi.on('get-stationsdata', getStationsData)
 }
 
@@ -360,19 +360,19 @@ if (netatmoapi){
 var gpio = require('rpi-gpio')
 var last_motion_state = false
 var motion_value = 0
-gpio.on('change', function(channel, value) {
+gpio.on('change', function (channel, value) {
 	// Test by turning down screensaver to few sec
 	// export DISPLAY=:0
 	// xset s 2
 	//console.log('Channel ' + channel + ' value is now ' + value +' total ' + motion_value);
-	if (Math.abs(motion_value) > 10){
+	if (Math.abs(motion_value) > 10) {
 		exec('export DISPLAY=:0 && xdotool mousemove 1 2')
 		motion_value = 0
 	}
-	if (value == true){
+	if (value == true) {
 		motion_value++
 	}
-	else{
+	else {
 		motion_value--
 	}
 	last_motion_state = value
@@ -387,10 +387,10 @@ gpio.setup(11, gpio.DIR_IN, gpio.EDGE_BOTH)
 
 // 	}
 // 	if (mode == 'evening'){
-		
+
 // 	}
 // 	if (mode == 'off'){
-		
+
 // 	}
 // 	light_api.groups.getGroupByName('Kitchen').then(group => {
 // 		const groupState = new GroupLightState()
@@ -447,7 +447,7 @@ if (fs.existsSync(webpath)) {
 	var connect = require('connect');
 	var serveStatic = require('serve-static');
 	connect().use(serveStatic(webpath)).listen(config.web.port, function () {
-		console.log('Server running on port '+config.web.port+'...');
+		console.log('Server running on port ' + config.web.port + '...');
 	});
 }
 
