@@ -19,10 +19,12 @@ config.location = {
 	"lng": 12.842306
 };
 // Set language for weather and dates - ex. 'en', 'sv'
-config.language = 'en';
+config.language = "en";
+config.autosleep = "22-07"; //hh-hh
 
 config.quotes = ["^GSPC", "^DJI", "^IXIC", "^RUT", "^OMX", "SI=F", "GC=F"];
 config.time = {
+	"localzone": "Europe/Stockholm",
 	"remotezone": "America/Los_Angeles"
 };
 config.cam = {
@@ -41,13 +43,13 @@ config.weather = {
 	"openweathermap": {
 		// Register for API key at https://home.openweathermap.org/api_keys
 		"key": "83032a45ab76e8ddbd826905caf45b31",
-		"url": "http://api.openweathermap.org/data/2.5/weather?lang="+config.language+"&lat="+config.location.lat+"&lon="+config.location.lng+"&APPID=",
+		"url": "http://api.openweathermap.org/data/2.5/weather?lang=" + config.language + "&lat=" + config.location.lat + "&lon=" + config.location.lng + "&APPID=",
 	},
 	"met_no": {
-		"url": "https://api.met.no/weatherapi/locationforecast/2.0/?lat="+config.location.lat+"&lon="+config.location.lng
+		"url": "https://api.met.no/weatherapi/locationforecast/2.0/?lat=" + config.location.lat + "&lon=" + config.location.lng
 	},
 	"popup": {
-		"url": "https://regnradar.se/?lat="+config.location.lat+"&lng="+config.location.lng
+		"url": "https://regnradar.se/?lat=" + config.location.lat + "&lng=" + config.location.lng
 	}
 };
 
@@ -58,8 +60,6 @@ config.netatmo = {
 	"password": "",
 	"options": {
 		"device_id": "70:ee:50:28:b7:a2",
-		"module_id": "05:00:00:06:b1:30",
-		"bearer": "52d42bfc1777599b298b456c|4b157f5a32cd79d1b46d4fb4a2ff10a0", // Example: 52xxxxxxxxxxxxxxx|4ayyyyyyyyyyyy
 	},
 	"forecast": {
 		// Find with browser inspector at https://weathermap.netatmo.com/
@@ -98,14 +98,14 @@ config.calendar = {
 		"type": "VEVENT",
 		"days": 90
 	}
-
 };
 config.hue = {
 	"username": "",
 	"client_key": ""
 };
 config.tibber1 = {
-	// Endpoint configuration.
+	// Endpoint configuration. Get token from https://developer.tibber.com/settings/accesstoken
+	"active": true, // Enable live feed
 	"apiEndpoint": {
 		"apiKey": "", // Enter gql token
 		"feedUrl": "wss://api.tibber.com/v1-beta/gql/subscriptions",
@@ -115,21 +115,18 @@ config.tibber1 = {
 	"homeId": "",
 	"timestamp": true,
 	"power": true,
+	"accumulatedConsumption": true,
+	"maxPower": true,
+	"powerProduction": true,
 };
 config.tibber2 = {
-	// Endpoint configuration.
+	// Endpoint configuration. Get token by making POST request:
+	// curl 'https://app.tibber.com/v1/login.credentials' -H 'content-type: application/json' --data-binary '{"email":"mail@gmail.com","password":"XXXX"}'
 	"apiEndpoint": {
 		"apiKey": "", //Enter v1 gql token
 		"feedUrl": "wss://app.tibber.com/v4/gql/subscriptions",
 		"queryUrl": "https://app.tibber.com/v4/gql",
 	},
-	// Query configuration.
-	"homeId": "",
-	"timestamp": true,
-	"power": true,
-	"inverter": "", // Inverter account id
-	"production": "", // Solar production account id
-	"thermostat": "" // Example: nibe heat pump#abc123-1234-5678-abc-fda1234#90123
 };
 
 config.playlist = {
@@ -188,7 +185,8 @@ config.playlist = {
 		"list": [
 			["spotify:user:spotify:playlist:37i9dQZF1DXdsy92d7BLpC", "weekend hangouts"],
 			["spotify:user:spotify:playlist:37i9dQZF1DWTvNyxOwkztu", "Chillout lounge"],
-			["spotify:user:spotify:playlist:3EfJJ8yvEae5fxPooM6WzF", "ZARA Store"]
+			["spotify:user:spotify:playlist:3EfJJ8yvEae5fxPooM6WzF", "ZARA Store"],
+			["spotify:user:spotify:playlist:2j5DKnz62m6W7OBppCznvT", "Blanck Poolparty"]
 		]
 	}
 };

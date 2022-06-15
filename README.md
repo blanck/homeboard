@@ -120,6 +120,7 @@ Open the second terminal and run the development version of the dashboard
 ```
 npm run dev
 ```
+In the browser window, open inspector for the localhost:8080 browser page that automatically opens. Click "Toggle device toolbar" or click CMD + shift + M. Select responsive dimensions and enter 1920 x 1080 pixels to match the monitor fullscreen resolution on the Homeboard device display.
 
 
 # Install splash screen
@@ -150,6 +151,10 @@ npm run dev
     # hdmi_force_hotplug=1
     # hdmi_group=1
     # hdmi_mode=31
+
+### npm install fail with node-gyp error on MacOS
+    This is due to missing Xcode command line tools which are required to build the project.
+    Install by running ``` xcode-select --install ```
 
 ### Manually running server
     # Stop pm2 server

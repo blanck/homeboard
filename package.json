@@ -34,7 +34,7 @@
   "scripts": {
     "start": "npm run dev",
     "dev": "cross-env NODE_ENV=development webpack-dev-server --config ./build/webpack.config.js",
-    "server": "cross-env NODE_ENV=development node ./build/build.js node server.js",
+    "server": "cross-env NODE_ENV=development node ./build/build.js && node server.js",
     "build-dev": "cross-env NODE_ENV=development node ./build/build.js",
     "build-prod": "cross-env NODE_ENV=production node ./build/build.js",
     "postinstall": "cpy ./node_modules/framework7-icons/fonts/*.* ./src/fonts/"
@@ -67,7 +67,7 @@
     "serve-static": "^1.14.1",
     "socket.io": "^2.4.0",
     "socket.io-client": "^2.3.0",
-    "sonos": "^1.14.0",
+    "sonos": "github:blanck/node-sonos",
     "template7": "^1.4.2",
     "tibber-api": "^1.2.11",
     "vue": "^2.6.12",

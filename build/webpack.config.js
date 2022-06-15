@@ -43,6 +43,7 @@ module.exports = {
     hot: true,
     open: true,
     host: 'localhost',
+    port: 8080,
     compress: true,
     contentBase: '/www/',
     disableHostCheck: true,
