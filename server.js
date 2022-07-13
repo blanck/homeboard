@@ -427,8 +427,11 @@ var parseStationData = function (device) {
 			if (module.module_name == 'Outdoor' && module.dashboard_data) {
 				json_data.outdoor = module.dashboard_data
 			}
+			if (module.module_name == 'Wind' && module.dashboard_data) {
+				json_data.outdoor.wind_deg = module.dashboard_data.GustAngle
+				json_data.outdoor.wind_speed = module.dashboard_data.GustStrength
+			}
 		})
-		// console.log(json_data)
 		return json_data
 	}
 	else {
@@ -523,10 +526,18 @@ gpio.setup(11, gpio.DIR_IN, gpio.EDGE_BOTH)
 
 let webpath = 'www';
 if (fs.existsSync(webpath)) {
-	var connect = require('connect');
-	var serveStatic = require('serve-static');
-	connect().use(serveStatic(webpath)).listen(config.web.port, () => {
-		console.log('Server running on port ' + config.web.port + '...');
-	});
+	// Check if running already
+	request('http://localhost:' + config.web.port, (err, res) => {
+		if (err && err.code == 'ECONNREFUSED') {
+			var connect = require('connect');
+			var serveStatic = require('serve-static');
+			connect().use(serveStatic(webpath)).listen(config.web.port, () => {
+				console.log('Server running on port ' + config.web.port + '...');
+			});
+		}
+		else if (res.statusCode == 200) {
+			console.log('Server already running on port ' + config.web.port + '...');
+		}
+	})
 }
 

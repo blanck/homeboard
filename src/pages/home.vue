@@ -27,16 +27,41 @@
                 {{ weather.outdoor.min_temp }}&deg; &nbsp;&nbsp;&nbsp;
                 <f7-icon f7="arrow_up_to_line"></f7-icon>
                 {{ weather.outdoor.max_temp }}&deg; &nbsp;&nbsp;&nbsp;
-                <span v-if="forecast && forecast.current_windgust">
+                <span
+                  v-if="
+                    (forecast && forecast.current_windgust) ||
+                    (weather.outdoor && weather.outdoor.wind_speed)
+                  "
+                >
                   <f7-icon f7="hand_draw"></f7-icon>
-                  {{ formatFeelsLike(weather.outdoor.Temperature, forecast) }}&deg;
-                  &nbsp;&nbsp;&nbsp;
+                  {{ formatFeelsLike(weather, forecast) }}&deg; &nbsp;&nbsp;&nbsp;
                 </span>
                 <f7-icon f7="drop"></f7-icon>
                 {{ weather.outdoor.Humidity }} %
-                <div v-if="forecast">
-                  <span v-if="forecast.current_windgust">
-                    <f7-icon f7="outlined_flag"></f7-icon>
+                <div>
+                  <span
+                    v-if="
+                      weather &&
+                      weather.outdoor &&
+                      weather.outdoor.wind_speed &&
+                      weather.outdoor.wind_deg
+                    "
+                  >
+                    <f7-icon
+                      f7="location_north"
+                      :style="formatWindDirection(weather.outdoor.wind_deg)"
+                    ></f7-icon>
+                    {{ formatWind(weather.outdoor.wind_speed) }} m/s &nbsp;&nbsp;&nbsp;
+                  </span>
+                  <span v-else-if="forecast && forecast.current_windgust">
+                    <f7-icon
+                      f7="location_north"
+                      :style="
+                        formatWindDirection(
+                          (forecast.forecastDays && forecast.forecastDays[0].winddirection) || 0
+                        )
+                      "
+                    ></f7-icon>
                     {{ formatWind(forecast.current_windgust) }} m/s &nbsp;&nbsp;&nbsp;
                   </span>
                   <f7-icon f7="speedometer"></f7-icon>
@@ -94,7 +119,10 @@
               </div>
               <div class="wind">
                 &nbsp;&nbsp;&nbsp;
-                <f7-icon f7="outlined_flag"></f7-icon>
+                <f7-icon
+                  f7="location_north"
+                  :style="formatWindDirection(day.winddirection)"
+                ></f7-icon>
                 {{ formatWind(day.windgust) }} m/s &nbsp;&nbsp;&nbsp;
                 <span v-if="day.rain > 1">
                   <f7-icon f7="cloud_heavyrain"></f7-icon>
@@ -725,10 +753,13 @@ export default {
     },
     formatWind(windkph) {
       if (windkph) {
-        return (windkph / 3.6 / 3.6).toFixed(0)
+        return (windkph / 3.6).toFixed(0)
       } else {
         return '- '
       }
+    },
+    formatWindDirection(angle) {
+      return 'transform: rotate(' + (angle - 180) + 'deg);'
     },
     formatCondition(weather) {
       return weather.charAt(0).toUpperCase() + weather.slice(1)
@@ -748,9 +779,17 @@ export default {
     formatCO2(co) {
       return co ? co.toFixed(0) : null
     },
-    formatFeelsLike(temp, forecast) {
-      if (temp && forecast && forecast.current_windgust) {
-        return weatherfunctions.getFeelslike(temp, forecast.current_windgust / 3.6)
+    formatFeelsLike(weather, forecast) {
+      if (weather && weather.outdoor && weather.outdoor.wind_speed) {
+        return weatherfunctions.getFeelslike(
+          weather.outdoor.Temperature,
+          weather.outdoor.wind_speed / 3.6
+        )
+      } else if (weather && forecast && forecast.current_windgust) {
+        return weatherfunctions.getFeelslike(
+          weather.outdoor.Temperature,
+          forecast.current_windgust / 3.6
+        )
       } else {
         return '-'
       }
@@ -977,6 +1016,8 @@ export default {
                     date_max_temp: response.data.dt,
                     date_min_temp: response.data.dt,
                     temp_trend: null,
+                    wind_deg: response.data.wind ? response.data.wind.deg : null,
+                    wind_speed: response.data.wind ? response.data.wind.speed : null,
                   },
                 }
               }
@@ -1170,7 +1211,7 @@ export default {
       this.socket.on('CONFIG', (config) => {
         this.config = config
         if (this.config.language) {
-          moment.locale(this.config.language, {
+          moment.updateLocale(this.config.language, {
             relativeTime: this.translations[this.config.language].calrelative,
           })
         }
