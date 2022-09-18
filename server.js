@@ -341,7 +341,7 @@ io.on('connection', function (socket) {
 
 	socket.on('tibber', function (mode) {
 		if (tibberQuery) {
-			const query = "query {viewer { homes {      currentSubscription{        id validFrom validTo status priceInfo{ current{ total energy tax startsAt currency level }}}}} }";
+			const query = "query {viewer { homes {      currentSubscription{        id validFrom validTo status priceInfo{ current{ total energy tax startsAt currency level } today { total startsAt } tomorrow { total startsAt }}}}} }";
 			tibberQuery.query(query).then(res => {
 				if (res.viewer && res.viewer.homes) {
 					io.emit('TIBBER', res.viewer.homes[0]);

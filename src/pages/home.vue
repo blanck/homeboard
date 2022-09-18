@@ -30,7 +30,7 @@
                 <span
                   v-if="
                     (forecast && forecast.current_windgust) ||
-                    (weather.outdoor && weather.outdoor.wind_speed)
+                      (weather.outdoor && weather.outdoor.wind_speed)
                   "
                 >
                   <f7-icon f7="hand_draw"></f7-icon>
@@ -42,9 +42,9 @@
                   <span
                     v-if="
                       weather &&
-                      weather.outdoor &&
-                      weather.outdoor.wind_speed &&
-                      weather.outdoor.wind_deg
+                        weather.outdoor &&
+                        weather.outdoor.wind_speed &&
+                        weather.outdoor.wind_deg
                     "
                   >
                     <f7-icon
@@ -110,8 +110,8 @@
                 <img
                   :src="
                     `https://weathermap.netatmo.com/images/weathermap/weather-icons/` +
-                    icon +
-                    `.svg?v=1`
+                      icon +
+                      `.svg?v=1`
                   "
                   v-for="(icon, ind2) in getWeatherIcon(day.weather_symbol_day)"
                   :key="ind2"
@@ -154,8 +154,8 @@
                 class="image"
                 :style="
                   `background-image: url(` +
-                  (article.urlToImage ? article.urlToImage : './static/news.jpg') +
-                  `)`
+                    (article.urlToImage ? article.urlToImage : './static/news.jpg') +
+                    `)`
                 "
               ></f7-col>
               <f7-col width="70" class="headline">{{ formatHeadline(article.title) }}</f7-col>
@@ -176,7 +176,7 @@
               <f7-col width="40" class="calendar-time">{{
                 formatCalendarTime(event.start)
               }}</f7-col>
-              <f7-col width="60" class="calendar-event">{{ event.summary }}</f7-col>
+              <f7-col width="60" class="calendar-event" v-text="event.summary"></f7-col>
             </f7-row>
           </f7-block>
         </f7-col>
@@ -202,6 +202,42 @@
               ></f7-chip>
             </f7-col>
           </f7-row>
+        </f7-col>
+        <f7-col
+          v-if="tibber && tibber.currentSubscription.priceInfo.today"
+          width="35"
+          class="widget prices"
+        >
+          <f7-block>
+            <f7-block-title>{{ translate('prices') }}</f7-block-title>
+            <la-cartesian :data="priceChart">
+              <defs>
+                <linearGradient id="color-id" x1="0" y1="0" x2="0" y2="1">
+                  <stop stop-color="#f94144" offset="0%" stop-opacity="1"></stop>
+                  <stop stop-color="#ffe74c" offset="50%" stop-opacity="1"></stop>
+                  <stop stop-color="#42b983" offset="100%" stop-opacity="1"></stop>
+                </linearGradient>
+              </defs>
+              <la-line curve :width="5" prop="value" color="url(#color-id)"></la-line>
+              <la-x-axis
+                prop="name"
+                color="#666677"
+                :format="(v) => v.padStart(2, '0')"
+              ></la-x-axis>
+              <la-y-marker
+                v-if="currentPrice"
+                dashed
+                :value="currentPrice.value"
+                :label="currentPrice.label"
+                :color="formatEnergyColor(currentPrice.level)"
+              ></la-y-marker>
+              <la-y-axis
+                color="#666677"
+                :interval="5"
+                :format="(v) => (Math.round(v * 10) / 10).toFixed(2)"
+              ></la-y-axis>
+            </la-cartesian>
+          </f7-block>
         </f7-col>
       </f7-row>
       <f7-row class="bottom">
@@ -306,8 +342,8 @@
               {{ translate('price') }}<br />
               <f7-gauge
                 type="circle"
-                :value="tibber.currentSubscription.priceInfo.current.energy"
-                :value-text="formatEnergyPrice(tibber.currentSubscription.priceInfo.current.energy)"
+                :value="tibber.currentSubscription.priceInfo.current.total"
+                :value-text="formatEnergyPrice(tibber.currentSubscription.priceInfo.current.total)"
                 :value-text-color="
                   formatEnergyColor(tibber.currentSubscription.priceInfo.current.level)
                 "
@@ -336,10 +372,10 @@
                 size="140"
                 :label-text="
                   parseFloat(tibber2.inverterProduction.keyFigures[0].valueText).toFixed(1) +
-                  ` ` +
-                  tibber2.inverterProduction.keyFigures[0].unitText +
-                  ` ` +
-                  translate('today')
+                    ` ` +
+                    tibber2.inverterProduction.keyFigures[0].unitText +
+                    ` ` +
+                    translate('today')
                 "
                 label-text-color="#888888"
               ></f7-gauge>
@@ -357,8 +393,8 @@
                 size="140"
                 :label-text="
                   parseFloat(tibberFeed.accumulatedConsumption).toFixed(1) +
-                  ` kWh ` +
-                  translate('today')
+                    ` kWh ` +
+                    translate('today')
                 "
                 label-text-color="#888888"
               ></f7-gauge>
@@ -477,8 +513,16 @@ import axios from 'axios'
 import moment from 'moment-timezone'
 import io from 'socket.io-client'
 import weatherfunctions from '../js/weather'
+import { Cartesian, Line, XAxis, YAxis, YMarker } from 'laue'
 
 export default {
+  components: {
+    LaCartesian: Cartesian,
+    LaLine: Line,
+    LaXAxis: XAxis,
+    LaYAxis: YAxis,
+    LaYMarker: YMarker,
+  },
   data() {
     return {
       showBackground: false,
@@ -521,6 +565,7 @@ export default {
           price: 'Price',
           production: 'Production',
           consumption: 'Consumption',
+          prices: 'Electricity Prices',
           today: 'today',
           updated: 'Updated',
           reboot: 'Reboot',
@@ -564,6 +609,7 @@ export default {
           price: 'Elpris',
           production: 'Produktion',
           consumption: 'Förbrukning',
+          prices: 'Elpris',
           today: 'idag',
           updated: 'Uppdaterad',
           reboot: 'Starta om',
@@ -629,6 +675,40 @@ export default {
         return 'static/openweathermap/' + this.currentCondition.icon + '.svg'
       }
     },
+    priceChart() {
+      const values = []
+      if (this.tibber && this.tibber.currentSubscription.priceInfo) {
+        for (const val of this.tibber.currentSubscription.priceInfo.today) {
+          if (moment(val.startsAt).diff(moment()) > -(2 * 60 * 60 * 1000)) {
+            values.push({
+              name: moment(val.startsAt).format('H'),
+              value: val.total,
+            })
+          }
+        }
+        for (const val of this.tibber.currentSubscription.priceInfo.tomorrow) {
+          if (moment(val.startsAt).diff(moment()) < 12 * 60 * 60 * 1000) {
+            values.push({
+              name: moment(val.startsAt).format('H'),
+              value: val.total,
+            })
+          }
+        }
+      }
+      return values
+    },
+    currentPrice() {
+      if (this.tibber && this.tibber.currentSubscription.priceInfo.current) {
+        const curr = this.tibber.currentSubscription.priceInfo.current
+        return {
+          label: moment(curr.startsAt).format('H:mm') + ': ' + curr.total.toFixed(2) + ' kr',
+          value: curr.total,
+          level: curr.level,
+        }
+      } else {
+        return false
+      }
+    },
   },
   methods: {
     getBackground() {
@@ -643,7 +723,7 @@ export default {
           cachebuster
         if (cachebuster % 2 || !this.showBackground) {
           self.$$('.page-content')[0].style.backgroundImage = 'url(' + imgurl + ')'
-          setTimeout(function () {
+          setTimeout(function() {
             if (typeof self.$$('.page-current')[0] != 'undefined') {
               self.$$('.page-current')[0].style.backgroundImage = ''
             }
@@ -651,7 +731,7 @@ export default {
         } else {
           if (this.showBackground && self.$$('.page-current').length > 0) {
             self.$$('.page-current')[0].style.backgroundImage = 'url(' + imgurl + ')'
-            setTimeout(function () {
+            setTimeout(function() {
               if (typeof self.$$('.page-content')[0] != 'undefined') {
                 self.$$('.page-content')[0].style.backgroundImage = ''
               }
@@ -861,6 +941,24 @@ export default {
         sameElse: '[sameelse]',
       })
     },
+    formatCalendarText(text) {
+      const symbols = {
+        tennis: '&#127934;',
+        party: '&#129395;',
+        birthday: '&#127874;',
+        delivery: '&#128666;',
+        dinner: '&#127869;',
+        lunch: '&#127860;',
+        haircut: '&#128135;',
+        gym: '&#129336;',
+        massage: '&#128134;',
+      }
+      for (const s in symbols) {
+        let re = new RegExp('(' + s + ')', 'gi')
+        text = text.replace(re, '&nbsp;$1&nbsp;' + symbols[s])
+      }
+      return text
+    },
     formatArticleContent(text) {
       return text ? text.replace(/\n/g, '<br>') : null
     },
@@ -935,15 +1033,25 @@ export default {
       }
     },
     updateTime() {
-      this.currentTime = moment().tz(this.config.time.localzone).format('LT')
+      this.currentTime = moment()
+        .tz(this.config.time.localzone)
+        .format('LT')
       if (this.config.language == 'sv') {
-        this.currentDay = moment().tz(this.config.time.localzone).format('ddd D MMMM')
+        this.currentDay = moment()
+          .tz(this.config.time.localzone)
+          .format('ddd D MMMM')
       } else {
-        this.currentDay = moment().tz(this.config.time.localzone).format('ddd D MMMM')
+        this.currentDay = moment()
+          .tz(this.config.time.localzone)
+          .format('ddd D MMMM')
       }
       if (this.config && this.config.time) {
-        this.remoteTime = moment().tz(this.config.time.remotezone).format('LT')
-        this.remoteAbbr = moment().tz(this.config.time.remotezone).format('z')
+        this.remoteTime = moment()
+          .tz(this.config.time.remotezone)
+          .format('LT')
+        this.remoteAbbr = moment()
+          .tz(this.config.time.remotezone)
+          .format('z')
       }
       setTimeout(this.updateTime, 60 - moment().format('mm') * 1000)
     },
@@ -1037,7 +1145,7 @@ export default {
     },
 
     getQuotes() {
-      if (this.config && this.config.quotes) {
+      if (this.config && this.config.quotes.length > 0) {
         this.socket.emit('quotes', this.config.quotes)
       }
     },
