@@ -56,7 +56,7 @@
     "framework7-icons": "^3.0.1",
     "framework7-vue": "^5.7.11",
     "laue": "^0.2.1",
-    "moment-timezone": "^0.5.31",
+    "moment-timezone": "^0.5.35",
     "netatmo": "^2.3.0",
     "newsapi": "^2.4.1",
     "node-hue-api": "^4.0.9",
