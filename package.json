@@ -70,7 +70,7 @@
     "socket.io-client": "^2.3.0",
     "sonos": "github:blanck/node-sonos",
     "template7": "^1.4.2",
-    "tibber-api": "^1.2.11",
+    "tibber-api": "^1.4.2",
     "vue": "^2.6.12",
     "vuex": "^3.5.1",
     "yahoo-finance": "^0.3.6"
