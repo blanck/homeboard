@@ -1,22 +1,19 @@
-const webpack = require('webpack');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
-const VueLoaderPlugin = require('vue-loader/lib/plugin');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const OptimizeCSSPlugin = require('optimize-css-assets-webpack-plugin');
-const TerserPlugin = require('terser-webpack-plugin');
+const webpack = require('webpack')
+const CopyWebpackPlugin = require('copy-webpack-plugin')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
+const VueLoaderPlugin = require('vue-loader/lib/plugin')
+const MiniCssExtractPlugin = require('mini-css-extract-plugin')
+const OptimizeCSSPlugin = require('optimize-css-assets-webpack-plugin')
+const TerserPlugin = require('terser-webpack-plugin')
 
-
-const path = require('path');
+const path = require('path')
 
 function resolvePath(dir) {
-  return path.join(__dirname, '..', dir);
+  return path.join(__dirname, '..', dir)
 }
 
-const env = process.env.NODE_ENV || 'development';
-const target = process.env.TARGET || 'web';
-
-
+const env = process.env.NODE_ENV || 'development'
+const target = process.env.TARGET || 'web'
 
 module.exports = {
   mode: env,
@@ -53,9 +50,11 @@ module.exports = {
     },
   },
   optimization: {
-    minimizer: [new TerserPlugin({
-      sourceMap: true,
-    })],
+    minimizer: [
+      new TerserPlugin({
+        sourceMap: true,
+      }),
+    ],
   },
   module: {
     rules: [
@@ -80,12 +79,14 @@ module.exports = {
       {
         test: /\.css$/,
         use: [
-          (env === 'development' ? 'style-loader' : {
-            loader: MiniCssExtractPlugin.loader,
-            options: {
-              publicPath: '../'
-            }
-          }),
+          env === 'development'
+            ? 'style-loader'
+            : {
+                loader: MiniCssExtractPlugin.loader,
+                options: {
+                  publicPath: '../',
+                },
+              },
           'css-loader',
           'postcss-loader',
         ],
@@ -93,12 +94,14 @@ module.exports = {
       {
         test: /\.styl(us)?$/,
         use: [
-          (env === 'development' ? 'style-loader' : {
-            loader: MiniCssExtractPlugin.loader,
-            options: {
-              publicPath: '../'
-            }
-          }),
+          env === 'development'
+            ? 'style-loader'
+            : {
+                loader: MiniCssExtractPlugin.loader,
+                options: {
+                  publicPath: '../',
+                },
+              },
           'css-loader',
           'postcss-loader',
           'stylus-loader',
@@ -107,12 +110,14 @@ module.exports = {
       {
         test: /\.less$/,
         use: [
-          (env === 'development' ? 'style-loader' : {
-            loader: MiniCssExtractPlugin.loader,
-            options: {
-              publicPath: '../'
-            }
-          }),
+          env === 'development'
+            ? 'style-loader'
+            : {
+                loader: MiniCssExtractPlugin.loader,
+                options: {
+                  publicPath: '../',
+                },
+              },
           'css-loader',
           'postcss-loader',
           'less-loader',
@@ -121,12 +126,14 @@ module.exports = {
       {
         test: /\.(sa|sc)ss$/,
         use: [
-          (env === 'development' ? 'style-loader' : {
-            loader: MiniCssExtractPlugin.loader,
-            options: {
-              publicPath: '../'
-            }
-          }),
+          env === 'development'
+            ? 'style-loader'
+            : {
+                loader: MiniCssExtractPlugin.loader,
+                options: {
+                  publicPath: '../',
+                },
+              },
           'css-loader',
           'postcss-loader',
           'sass-loader',
@@ -138,7 +145,6 @@ module.exports = {
         options: {
           limit: 10000,
           name: 'images/[name].[ext]',
-
         },
       },
       {
@@ -147,7 +153,6 @@ module.exports = {
         options: {
           limit: 10000,
           name: 'media/[name].[ext]',
-
         },
       },
       {
@@ -156,7 +161,6 @@ module.exports = {
         options: {
           limit: 10000,
           name: 'fonts/[name].[ext]',
-
         },
       },
     ],
@@ -167,31 +171,35 @@ module.exports = {
       'process.env.TARGET': JSON.stringify(target),
     }),
     new VueLoaderPlugin(),
-    ...(env === 'production' ? [
-      new OptimizeCSSPlugin({
-        cssProcessorOptions: {
-          safe: true,
-          map: { inline: false },
-        },
-      }),
-      new webpack.optimize.ModuleConcatenationPlugin(),
-    ] : [
-      // Development only plugins
-      new webpack.HotModuleReplacementPlugin(),
-      new webpack.NamedModulesPlugin(),
-    ]),
+    ...(env === 'production'
+      ? [
+          new OptimizeCSSPlugin({
+            cssProcessorOptions: {
+              safe: true,
+              map: { inline: false },
+            },
+          }),
+          new webpack.optimize.ModuleConcatenationPlugin(),
+        ]
+      : [
+          // Development only plugins
+          new webpack.HotModuleReplacementPlugin(),
+        ]),
     new HtmlWebpackPlugin({
       filename: './index.html',
       template: './src/index.html',
       inject: true,
-      minify: env === 'production' ? {
-        collapseWhitespace: true,
-        removeComments: true,
-        removeRedundantAttributes: true,
-        removeScriptTypeAttributes: true,
-        removeStyleLinkTypeAttributes: true,
-        useShortDoctype: true
-      } : false,
+      minify:
+        env === 'production'
+          ? {
+              collapseWhitespace: true,
+              removeComments: true,
+              removeRedundantAttributes: true,
+              removeScriptTypeAttributes: true,
+              removeStyleLinkTypeAttributes: true,
+              useShortDoctype: true,
+            }
+          : false,
     }),
     new MiniCssExtractPlugin({
       filename: 'css/[name].css',
@@ -201,9 +209,6 @@ module.exports = {
         from: resolvePath('src/static'),
         to: resolvePath('www/static'),
       },
-
     ]),
-
-
   ],
-};
+}

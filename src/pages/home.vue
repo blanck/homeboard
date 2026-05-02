@@ -1,44 +1,68 @@
 <template>
+
   <f7-page name="home" :class="showBackground ? 'fullbg' : ''">
+
     <f7-block class="widgets" v-if="!showBackground">
+
       <f7-row class="top">
+
         <f7-col class="widget weather" width="35">
+
           <f7-row>
+
             <f7-col class="text-align-right">
+
               <img :src="currentConditionImage" class="image" v-if="currentConditionImage" />
+
             </f7-col>
+
             <f7-col class="text-align-left">
+
               <div v-if="weather && weather.outdoor" class="title">
-                {{ weather.outdoor.Temperature }}&deg;
+                 {{ weather.outdoor.Temperature }}&deg;
               </div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="subtitle" v-if="currentCondition">
-                {{ formatCondition(currentCondition.description) }}
+                 {{ formatCondition(currentCondition.description) }}
               </div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="details" v-if="weather && weather.outdoor" @click="showWeather()">
+
                 <f7-icon f7="arrow_down_to_line"></f7-icon>
-                {{ weather.outdoor.min_temp }}&deg; &nbsp;&nbsp;&nbsp;
+                 {{ weather.outdoor.min_temp }}&deg; &nbsp;&nbsp;&nbsp;
                 <f7-icon f7="arrow_up_to_line"></f7-icon>
-                {{ weather.outdoor.max_temp }}&deg; &nbsp;&nbsp;&nbsp;
+                 {{ weather.outdoor.max_temp }}&deg; &nbsp;&nbsp;&nbsp;
                 <span
                   v-if="
                     (forecast && forecast.current_windgust) ||
                       (weather.outdoor && weather.outdoor.wind_speed)
                   "
                 >
+
                   <f7-icon f7="hand_draw"></f7-icon>
-                  {{ formatFeelsLike(weather, forecast) }}&deg; &nbsp;&nbsp;&nbsp;
+                   {{ formatFeelsLike(weather, forecast) }}&deg; &nbsp;&nbsp;&nbsp;
                 </span>
+
                 <f7-icon f7="drop"></f7-icon>
-                {{ weather.outdoor.Humidity }} %
+                 {{ weather.outdoor.Humidity }} %
                 <div>
+
                   <span
                     v-if="
                       weather &&
@@ -47,13 +71,16 @@
                         weather.outdoor.wind_deg
                     "
                   >
+
                     <f7-icon
                       f7="location_north"
                       :style="formatWindDirection(weather.outdoor.wind_deg)"
                     ></f7-icon>
-                    {{ formatWind(weather.outdoor.wind_speed) }} m/s &nbsp;&nbsp;&nbsp;
+                     {{ formatWind(weather.outdoor.wind_speed) }} m/s &nbsp;&nbsp;&nbsp;
                   </span>
+
                   <span v-else-if="forecast && forecast.current_windgust">
+
                     <f7-icon
                       f7="location_north"
                       :style="
@@ -62,93 +89,149 @@
                         )
                       "
                     ></f7-icon>
-                    {{ formatWind(forecast.current_windgust) }} m/s &nbsp;&nbsp;&nbsp;
+                     {{ formatWind(forecast.current_windgust) }} m/s &nbsp;&nbsp;&nbsp;
                   </span>
+
                   <f7-icon f7="speedometer"></f7-icon>
-                  {{ formatPressure(weather.indoor.Pressure) }}
+                   {{ formatPressure(weather.indoor.Pressure) }}
                   <f7-icon
                     :f7="formatPressureIcon(weather.indoor.pressure_trend)"
                     v-if="weather.indoor.pressure_trend"
-                  ></f7-icon
-                  >&nbsp;&nbsp;&nbsp;
+                  ></f7-icon>
+                   &nbsp;&nbsp;&nbsp;
                   <span v-if="weather.indoor.CO2">
+
                     <f7-icon f7="sparkles"></f7-icon>
-                    {{ formatCO2(weather.indoor.CO2) }}
-                    <small>ppm</small>&nbsp;&nbsp;&nbsp;
+                     {{ formatCO2(weather.indoor.CO2) }}
+                    <small>ppm</small>
+                     &nbsp;&nbsp;&nbsp;
                   </span>
+
                 </div>
+
               </div>
-              <small v-if="weather && weather.outdoor"
-                >{{ translate('updated') }} {{ formatFromNow(weather.outdoor.time_utc) }}</small
-              >
+
+              <small v-if="weather && weather.outdoor">
+                 {{ translate('updated') }} {{ formatFromNow(weather.outdoor.time_utc) }}
+              </small>
+
             </f7-col>
+
           </f7-row>
+
         </f7-col>
+
         <f7-col class="widget time" width="30">
+
           <f7-row>
+
             <f7-col>
+
               <div class="title">{{ currentTime }}</div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="subtitle">{{ currentDay }}</div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="secondtitle">{{ remoteAbbr }} {{ remoteTime }}</div>
+
             </f7-col>
+
           </f7-row>
+
         </f7-col>
+
         <f7-col class="widget forecast" width="35">
+
           <f7-row class="justify-content-space-around" v-if="forecast">
+
             <f7-col v-for="(day, index) in forecast.forecastDays" :key="index">
+
               <div class="day">{{ day.day_locale }}</div>
+
               <div class="temp">{{ day.min_temp }} &ndash; {{ day.max_temp }}&deg;</div>
+
               <div class="forecast-icon">
+
                 <img
                   :src="
-                    `https://weathermap.netatmo.com/images/weathermap/weather-icons/` +
-                      icon +
-                      `.svg?v=1`
+                    `https://weathermap.netatmo.com/assets/weather-forecast-icons/` + icon + `.svg`
                   "
                   v-for="(icon, ind2) in getWeatherIcon(day.weather_symbol_day)"
                   :key="ind2"
                 />
+
               </div>
+
               <div class="wind">
-                &nbsp;&nbsp;&nbsp;
+                 &nbsp;&nbsp;&nbsp;
                 <f7-icon
                   f7="location_north"
                   :style="formatWindDirection(day.winddirection)"
                 ></f7-icon>
-                {{ formatWind(day.windgust) }} m/s &nbsp;&nbsp;&nbsp;
+                 {{ formatWind(day.windgust) }} m/s &nbsp;&nbsp;&nbsp;
                 <span v-if="day.rain > 1">
+
                   <f7-icon f7="cloud_heavyrain"></f7-icon>
-                  {{ formatWind(day.rain) }} mm
+                   {{ formatWind(day.rain) }} mm
                 </span>
+
               </div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="subtitle"></div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row>
+
             <f7-col>
+
               <div class="details"></div>
+
             </f7-col>
+
           </f7-row>
+
         </f7-col>
+
       </f7-row>
+
       <f7-row class="middle">
+
         <f7-col width="35" class="widget news">
+
           <div class="updated">{{ formatLastNewsUpdated(articles) }}</div>
+
           <f7-block-title>{{ translate('news') }}</f7-block-title>
+
           <div class="article-list">
+
             <f7-row v-for="(article, index) in articles" :key="index" @click="showArticle(index)">
+
               <f7-col
                 width="15"
                 class="image"
@@ -158,72 +241,112 @@
                     `)`
                 "
               ></f7-col>
+
               <f7-col width="70" class="headline">{{ formatHeadline(article.title) }}</f7-col>
-              <f7-col width="15" class="published">{{
-                formatPublishedTime(article.publishedAt)
-              }}</f7-col>
+
+              <f7-col width="15" class="published">
+                 {{ formatPublishedTime(article.publishedAt) }}
+              </f7-col>
+
             </f7-row>
+
           </div>
+
         </f7-col>
+
         <f7-col width="30" class="widget calendar">
+
           <f7-block>
+
             <f7-block-title>{{ translate('calendar') }}</f7-block-title>
+
             <f7-row
               v-for="(event, index) in events"
               :key="index"
               :class="formatCalendarClass(event.start)"
             >
-              <f7-col width="40" class="calendar-time">{{
-                formatCalendarTime(event.start)
-              }}</f7-col>
+
+              <f7-col width="40" class="calendar-time">
+                 {{ formatCalendarTime(event.start) }}
+              </f7-col>
+
               <f7-col width="60" class="calendar-event" v-text="event.summary"></f7-col>
+
             </f7-row>
+
           </f7-block>
+
         </f7-col>
+
         <f7-col v-if="quotes" width="35" class="widget stocks">
+
           <div class="updated">{{ formatLastStockUpdated(quotes) }}</div>
+
           <f7-block-title>{{ translate('stocks') }}</f7-block-title>
+
           <f7-row
             v-for="(quote, index) in quotes"
             :key="index"
             :class="quote.price.quoteType"
             @click="showStock(index)"
           >
+
             <f7-col width="20" class="symbol">{{ formatStockSymbol(quote.price.symbol) }}</f7-col>
+
             <f7-col width="40" class="name">{{ quote.price.shortName }}</f7-col>
-            <f7-col width="20" class="price"
-              >{{ quote.price.currencySymbol }}
-              {{ formatStockPrice(quote.price.regularMarketPrice) }}</f7-col
-            >
+
+            <f7-col width="20" class="price">
+               {{ quote.price.currencySymbol }} {{ formatStockPrice(quote.price.regularMarketPrice) }}
+
+            </f7-col>
+
             <f7-col width="15">
+
               <f7-chip
                 :text="formatPercent(quote.price.regularMarketChangePercent)"
                 :color="formatStockColor(quote.price.regularMarketChangePercent)"
               ></f7-chip>
+
             </f7-col>
+
           </f7-row>
+
         </f7-col>
+
         <f7-col
           v-if="tibber && tibber.currentSubscription.priceInfo.today"
           width="35"
           class="widget prices"
         >
+
           <f7-block>
+
             <f7-block-title>{{ translate('prices') }}</f7-block-title>
+
             <la-cartesian :data="priceChart">
+
               <defs>
+
                 <linearGradient id="color-id" x1="0" y1="0" x2="0" y2="1">
+
                   <stop stop-color="#f94144" offset="0%" stop-opacity="1"></stop>
+
                   <stop stop-color="#ffe74c" offset="50%" stop-opacity="1"></stop>
+
                   <stop stop-color="#42b983" offset="100%" stop-opacity="1"></stop>
+
                 </linearGradient>
+
               </defs>
+
               <la-line curve :width="5" prop="value" color="url(#color-id)"></la-line>
+
               <la-x-axis
                 prop="name"
                 color="#666677"
                 :format="(v) => v.padStart(2, '0')"
               ></la-x-axis>
+
               <la-y-marker
                 v-if="currentPrice"
                 dashed
@@ -231,115 +354,184 @@
                 :label="currentPrice.label"
                 :color="formatEnergyColor(currentPrice.level)"
               ></la-y-marker>
+
               <la-y-axis
                 color="#666677"
                 :interval="5"
                 :format="(v) => (Math.round(v * 10) / 10).toFixed(2)"
               ></la-y-axis>
+
             </la-cartesian>
+
           </f7-block>
+
         </f7-col>
+
       </f7-row>
+
       <f7-row class="bottom">
+
         <f7-col width="30" class="widget sonos">
+
           <f7-row v-if="sonos.track">
+
             <f7-col width="25" class="text-align-right">
+
               <img :src="getAlbumCover" class="image" />
+
             </f7-col>
+
             <f7-col width="50" class="text-align-left">
+
               <div class="title">{{ sonos.track.title }}</div>
+
               <div class="artist">{{ sonos.track.artist }}</div>
+
               <div class="album">{{ sonos.track.album }}</div>
+
               <f7-progressbar
                 class="track-progress"
                 :progress="sonos.position * sonos.ratio"
               ></f7-progressbar>
+
               <div class="controls">
+
                 <div
                   @click="volumeDown"
                   @mousedown="volumeDownStart"
                   @mouseup="volumeDownStop"
                   style="margin-right: 0.2em"
                 >
+
                   <f7-icon material="volume_down"></f7-icon>
+
                 </div>
+
                 <div style="width: 10em; margin-top: 2.3em">
+
                   <f7-progressbar color="gray" :progress="sonos.volume * 5"></f7-progressbar>
+
                 </div>
+
                 <div
                   @click="volumeUp"
                   @mousedown="volumeUpStart"
                   @mouseup="volumeUpStop"
                   style="margin-left: 0.5em"
                 >
+
                   <f7-icon material="volume_up"></f7-icon>
+
                 </div>
+
               </div>
+
             </f7-col>
+
             <f7-col width="25" class="text-align-center">
+
               <div @click="playPause">
+
                 <f7-icon :material="getSonosStateIcon"></f7-icon>
+
               </div>
+
               <div @click="playNext">
+
                 <f7-icon material="skip_next"></f7-icon>
+
               </div>
+
             </f7-col>
+
           </f7-row>
+
           <f7-row v-if="!sonos.track">
+
             <f7-col width="20" class="text-align-right">
+
               <f7-skeleton-block class="image"></f7-skeleton-block>
+
             </f7-col>
+
             <f7-col width="60" class="text-align-left">
+
               <f7-skeleton-block
                 class="subtitle"
                 style="width: 8em; margin-top: 0.5em"
               ></f7-skeleton-block>
+
               <f7-skeleton-block
                 class="details"
                 style="width: 15em; margin-top: 0.5em"
               ></f7-skeleton-block>
+
             </f7-col>
+
             <f7-col width="20" class="text-align-left">
+
               <f7-icon :material="getSonosStateIcon"></f7-icon>
+
             </f7-col>
+
           </f7-row>
+
         </f7-col>
+
         <f7-col width="20" class="widget playlist">
+
           <f7-block-title></f7-block-title>
+
           <f7-row v-if="this.config">
+
             <f7-col width="50" v-for="(item, index) in this.config.playlist" :key="index">
+
               <f7-button
                 :icon-f7="item.icon"
                 :popover-open="'.popover-playlist-' + index"
                 large
                 fill
-                >{{ item.title }}</f7-button
               >
+                 {{ item.title }}
+              </f7-button>
+
             </f7-col>
+
             <f7-popover
               :class="'popover-playlist-' + index"
               v-for="(item, index) in this.config.playlist"
               :key="'popup-' + index"
               :backdrop="false"
             >
+
               <f7-list>
+
                 <f7-list-item
                   @click="startPlaylistItem(index, item, listItem)"
                   v-for="(listItem, listIndex) in item.list"
                   :key="index + '-' + listIndex"
                   :title="listItem[1]"
                 ></f7-list-item>
+
               </f7-list>
+
             </f7-popover>
+
           </f7-row>
+
         </f7-col>
+
         <f7-col width="50" class="widget home">
+
           <f7-row class="justify-content-space-around">
+
             <f7-col
               class="electricity"
               v-if="tibber && tibber.currentSubscription.priceInfo.current"
             >
-              {{ translate('price') }}<br />
+               {{ translate('price') }}
+              <br />
+
               <f7-gauge
                 type="circle"
                 :value="tibber.currentSubscription.priceInfo.current.total"
@@ -358,9 +550,13 @@
                 "
                 label-text-color="#888888"
               ></f7-gauge>
+
             </f7-col>
+
             <f7-col class="solar" v-if="tibber2 && tibber2.inverter">
-              {{ translate('production') }}<br />
+               {{ translate('production') }}
+              <br />
+
               <f7-gauge
                 type="circle"
                 :value="parseFloat(tibber2.inverter.bubble.percent / 100)"
@@ -379,9 +575,13 @@
                 "
                 label-text-color="#888888"
               ></f7-gauge>
+
             </f7-col>
+
             <f7-col class="consumption" v-if="tibber2 && tibberFeed">
-              {{ translate('consumption') }}<br />
+               {{ translate('consumption') }}
+              <br />
+
               <f7-gauge
                 type="circle"
                 :value="formatPowerValue()"
@@ -398,31 +598,59 @@
                 "
                 label-text-color="#888888"
               ></f7-gauge>
+
             </f7-col>
+
             <f7-col class="thermo" v-if="tibber2 && tibber2.thermostat">
+
               <div>
+
                 <div class="arrow" @click="setThermo(+0.5)">
+
                   <f7-icon material="keyboard_arrow_up"></f7-icon>
+
                 </div>
+
                 <div class="temp">&nbsp;{{ tibber2.thermostat.state.comfortTemperature }}&deg;</div>
+
                 <div class="current">
-                  {{ tibber2.thermostat.temperatureSensor.measurement.value }}&deg;
+                   {{ tibber2.thermostat.temperatureSensor.measurement.value }}&deg;
                 </div>
+
                 <div v-if="false" :class="fanpower ? 'fan on' : 'fan'" @click="setFanLevel()">
+
                   <f7-icon material="toys"></f7-icon>
+
                 </div>
+
                 <div class="arrow" @click="setThermo(-0.5)">
+
                   <f7-icon material="keyboard_arrow_down"></f7-icon>
+
                 </div>
+
               </div>
+
             </f7-col>
+
             <f7-col class="car" v-if="tibber3 && tibber3.electricVehicles.length > 0">
-              <div class="charge" v-for="(vehicle, index) in tibber3.electricVehicles" :key="index">
+
+              <div
+                class="charge"
+                v-for="(vehicle, index) in tibber3.electricVehicles.slice(0, 1)"
+                :key="index"
+              >
+
                 <img :src="vehicle.imgUrl" :class="vehicle.isAlive ? '' : 'dead'" />
+
                 <span v-html="formatBatteryText(vehicle.batteryText)"></span>
+
               </div>
+
             </f7-col>
+
           </f7-row>
+
           <!-- <f7-block-title>LIGHTS</f7-block-title>
           <f7-row class="justify-content-space-around">
             <f7-col>
@@ -446,56 +674,91 @@
               <f7-button @click="setLights('off')" large fill>OFF</f7-button>
             </f7-col>
           </f7-row>-->
+
         </f7-col>
+
       </f7-row>
+
     </f7-block>
+
     <!-- Toolbar-->
+
     <f7-toolbar bottom>
+
       <f7-link @click="rebootServer">{{ translate('reboot') }}</f7-link>
+
       <f7-link @click="restartServer">{{ translate('restart') }}</f7-link>
-      <f7-link @click="toggleBackground">{{
-        this.showBackground ? translate('showdashboard') : translate('showbackground')
-      }}</f7-link>
+
+      <f7-link @click="toggleBackground">
+         {{ this.showBackground ? translate('showdashboard') : translate('showbackground') }}
+      </f7-link>
+
       <f7-link @click="sleepServer">{{ translate('sleep') }}</f7-link>
+
       <f7-link @click="refreshPage">{{ translate('refresh') }}</f7-link>
+
     </f7-toolbar>
 
     <f7-popup class="article-popup" push>
+
       <f7-page v-if="currentArticle">
+
         <f7-navbar :title="currentArticle.title">
+
           <f7-nav-right>
+
             <f7-link popup-close>{{ translate('close') }}</f7-link>
+
           </f7-nav-right>
+
         </f7-navbar>
+
         <f7-block class="justify-content-center">
+
           <img
             class="article-image justify-content-center"
             :src="currentArticle.urlToImage"
             v-if="currentArticle.urlToImage"
           />
+
         </f7-block>
+
         <f7-block
           class="article-ingress"
           v-html="formatArticleContent(currentArticle.description)"
         ></f7-block>
+
         <f7-block
           class="article-content"
           v-html="formatArticleContent(currentArticle.content)"
         ></f7-block>
+
         <f7-block>
-          <f7-link external target="news" :href="currentArticle.url"
-            >Read full article at {{ currentArticle.source.name }}</f7-link
-          >
+
+          <f7-link external target="news" :href="currentArticle.url">
+             Read full article at {{ currentArticle.source.name }}
+          </f7-link>
+
         </f7-block>
+
       </f7-page>
+
     </f7-popup>
+
     <f7-popup class="weather-popup" push>
+
       <f7-page>
+
         <f7-navbar>
+
           <f7-nav-right>
+
             <f7-link popup-close>Close</f7-link>
+
           </f7-nav-right>
+
         </f7-navbar>
+
         <iframe
           v-if="weatherurl"
           :src="weatherurl"
@@ -503,9 +766,13 @@
           width="100%"
           height="100%"
         ></iframe>
+
       </f7-page>
+
     </f7-popup>
+
   </f7-page>
+
 </template>
 
 <script>
@@ -1368,3 +1635,4 @@ export default {
   },
 }
 </script>
+
