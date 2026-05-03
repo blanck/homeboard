@@ -122,6 +122,8 @@ const SmartDevicesTab = ({form, updateField, lang, Section, Field}) => {
         visible={showLogin}
         transparent
         animationType="fade"
+        statusBarTranslucent={true}
+        navigationBarTranslucent={true}
         onRequestClose={() => setShowLogin(false)}>
         <View style={styles.overlay}>
           <View style={styles.modal}>

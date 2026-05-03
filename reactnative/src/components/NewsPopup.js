@@ -73,6 +73,8 @@ const NewsPopup = () => {
       visible={visible}
       animationType="fade"
       transparent={true}
+      statusBarTranslucent={true}
+      navigationBarTranslucent={true}
       onRequestClose={hideArticle}>
       <Pressable style={styles.overlay} onPress={hideArticle}>
         <Animated.View style={[styles.popup, {transform: [{scale}]}]}>

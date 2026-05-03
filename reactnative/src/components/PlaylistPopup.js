@@ -118,6 +118,8 @@ const PlaylistPopup = () => {
       visible={true}
       animationType="none"
       transparent={true}
+      statusBarTranslucent={true}
+      navigationBarTranslucent={true}
       onRequestClose={hide}>
       <Animated.View style={[styles.overlay, {opacity: fadeAnim}]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={hide} />

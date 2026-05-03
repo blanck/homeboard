@@ -1,10 +1,12 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert} from 'react-native';
+import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import useStore from '../../store';
 import {translate} from '../../utils/translations';
 import SonosScanner from './SonosScanner';
 import DropdownPicker from './DropdownPicker';
 import {getZoneGroups, getCoordinatorIp, getSonosFavorites, getSonosPlaylists, getMediaInfo} from '../../services/sonosService';
+import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID} from '../../services/spotifyOAuthService';
 
 const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const [groupOptions, setGroupOptions] = useState([]);
@@ -19,6 +21,28 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const [favFilter, setFavFilter] = useState('');
   const [nowPlaying, setNowPlaying] = useState(null);
   const [addingCurrent, setAddingCurrent] = useState(false);
+  const [spotifyConnected, setSpotifyConnectedLocal] = useState(false);
+  const spotifyConnectedStore = useStore((s) => s.spotifyConnected);
+  const setSpotifyConnectedStore = useStore((s) => s.setSpotifyConnected);
+
+  useEffect(() => {
+    isSpotifyConnected().then(setSpotifyConnectedLocal);
+  }, [spotifyConnectedStore]);
+
+  const handleSpotifyConnect = async () => {
+    try {
+      const url = await startSpotifyOAuth();
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert('Spotify', err.message || 'Could not start Spotify login');
+    }
+  };
+
+  const handleSpotifyDisconnect = async () => {
+    await clearSpotifyTokens();
+    setSpotifyConnectedStore(false);
+    setSpotifyConnectedLocal(false);
+  };
 
   const quickPicks = form.quickPicks || [];
 
@@ -58,7 +82,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
     }
   }, []);
 
-  const MAX_CATEGORIES = 6;
+  const MAX_CATEGORIES = 5;
 
   const addCategory = () => {
     const name = newCategoryName.trim();
@@ -186,22 +210,48 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
               />
             )}
 
-            {form.sonosName ? (
-              <Text style={styles.selectedDevice}>
-                {translate('selectedDevice', lang)}: {form.sonosName}
-              </Text>
-            ) : null}
+            <View style={styles.scannerSpotifyRow}>
+              <View style={styles.scannerCol}>
+                {form.sonosName ? (
+                  <Text style={styles.selectedDevice}>
+                    {translate('selectedDevice', lang)}: {form.sonosName}
+                  </Text>
+                ) : null}
 
-            <SonosScanner
-              onSelectDevice={async (ip, name, room) => {
-                updateField('sonosName', room || name || '');
-                const coordinatorIp = await getCoordinatorIp(ip);
-                updateField('sonosIp', coordinatorIp);
-                fetchGroups(coordinatorIp);
-                fetchLibrary(coordinatorIp);
-              }}
-              lang={lang}
-            />
+                <SonosScanner
+                  onSelectDevice={async (ip, name, room) => {
+                    updateField('sonosName', room || name || '');
+                    const coordinatorIp = await getCoordinatorIp(ip);
+                    updateField('sonosIp', coordinatorIp);
+                    fetchGroups(coordinatorIp);
+                    fetchLibrary(coordinatorIp);
+                  }}
+                  lang={lang}
+                />
+              </View>
+
+              <View style={styles.spotifyInline}>
+                <Text style={styles.spotifyLabel}>{translate('spotifySearch', lang)}</Text>
+                {!SPOTIFY_CLIENT_ID ? (
+                  <Text style={styles.howto}>{translate('spotifyClientIdMissing', lang)}</Text>
+                ) : spotifyConnected ? (
+                  <View style={styles.spotifyRow}>
+                    <Icon name="check-circle" size={16} color="#4caf50" />
+                    <Text style={styles.spotifyConnected} numberOfLines={1}>
+                      {translate('spotifyConnected', lang)}
+                    </Text>
+                    <TouchableOpacity onPress={handleSpotifyDisconnect} style={styles.spotifyDisconnect}>
+                      <Text style={styles.spotifyDisconnectText}>{translate('disconnect', lang)}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.spotifyConnectBtn} onPress={handleSpotifyConnect}>
+                    <Icon name="link" size={16} color="#ffffff" />
+                    <Text style={styles.spotifyConnectText}>{translate('connectSpotify', lang)}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </View>
 
           <View style={styles.sonosRight}>
@@ -631,6 +681,61 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     padding: 12,
     textAlign: 'center',
+  },
+  scannerSpotifyRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  scannerCol: {
+    flexShrink: 0,
+  },
+  spotifyInline: {
+    flex: 1,
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: '#2a2a2a',
+  },
+  spotifyLabel: {
+    color: '#aaaaaa',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  spotifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  spotifyConnected: {
+    color: '#cccccc',
+    fontSize: 13,
+    flex: 1,
+  },
+  spotifyDisconnect: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#2a2a2a',
+  },
+  spotifyDisconnectText: {
+    color: '#cccccc',
+    fontSize: 12,
+  },
+  spotifyConnectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1DB954',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  spotifyConnectText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 

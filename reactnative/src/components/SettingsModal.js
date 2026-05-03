@@ -396,6 +396,8 @@ const SettingsModal = () => {
       visible={visible}
       animationType="fade"
       transparent={true}
+      statusBarTranslucent={true}
+      navigationBarTranslucent={true}
       onRequestClose={saveSettings}>
       <Pressable style={styles.overlay} onPress={saveSettings}>
         <Animated.View style={[styles.modal, {transform: [{scale}]}]}>

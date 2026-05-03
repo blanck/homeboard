@@ -45,6 +45,10 @@ const useStore = create((set, get) => ({
   setTibberFeed: (tibberFeed) => set({tibberFeed}),
   setTibberDataApiConnected: (v) => set({tibberDataApiConnected: v}),
 
+  // Spotify
+  spotifyConnected: false,
+  setSpotifyConnected: (v) => set({spotifyConnected: v}),
+
   // La Marzocco
   lamarzocco: null,
   setLaMarzocco: (lamarzocco) => set({lamarzocco}),
@@ -108,6 +112,11 @@ const useStore = create((set, get) => ({
     set({currentQuickPick: category, quickPickPopupVisible: true, popupAnchor: anchor || null}),
   hideQuickPick: () =>
     set({quickPickPopupVisible: false, currentQuickPick: null, popupAnchor: null}),
+  searchPopupVisible: false,
+  showSearch: (anchor) =>
+    set({searchPopupVisible: true, popupAnchor: anchor || null}),
+  hideSearch: () =>
+    set({searchPopupVisible: false, popupAnchor: null}),
 
   // Screen
   asleep: false,

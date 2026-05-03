@@ -1,7 +1,9 @@
 package com.homeboardapp
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -19,6 +21,10 @@ class MainActivity : ReactActivity() {
     // Switch from splash theme to app theme
     setTheme(R.style.AppTheme)
     super.onCreate(savedInstanceState)
+    // Edge-to-edge: let the dashboard background extend behind status / gesture bars
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    window.statusBarColor = Color.TRANSPARENT
+    window.navigationBarColor = Color.TRANSPARENT
     // Keep screen awake for dashboard display
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
   }

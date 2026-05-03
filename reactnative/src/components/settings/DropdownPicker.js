@@ -28,6 +28,8 @@ const DropdownPicker = ({label, value, options, onValueChange, half, placeholder
         visible={open}
         transparent
         animationType="fade"
+        statusBarTranslucent={true}
+        navigationBarTranslucent={true}
         onRequestClose={() => setOpen(false)}>
         <TouchableOpacity
           style={styles.overlay}

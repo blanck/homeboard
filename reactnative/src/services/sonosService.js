@@ -310,46 +310,62 @@ export const adjustVolume = async (ip, delta) => {
   );
 };
 
-// Play Spotify URI
-export const playSpotifyURI = async (ip, uri, region = '2311') => {
-  // Clear queue first
-  await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'RemoveAllTracksFromQueue',
-    '<InstanceID>0</InstanceID>',
-  );
+// Find a Sonos-provided Spotify template URI + resMD by looking through the user's
+// existing Spotify favorites/playlists. We then substitute just the playlist ID into
+// the template, so we never have to invent the format ourselves.
+const _spotifyTemplateCache = new Map();
+const getSpotifyTemplate = async (ip) => {
+  if (_spotifyTemplateCache.has(ip)) return _spotifyTemplateCache.get(ip);
 
-  // Set play mode to shuffle
-  await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'SetPlayMode',
-    '<InstanceID>0</InstanceID><NewPlayMode>SHUFFLE</NewPlayMode>',
-  );
+  const isSpotifyContainer = (s) =>
+    typeof s === 'string' && s.includes('spotify%3') && s.includes('cpcontainer');
 
-  // Add Spotify URI to queue
-  const encodedUri = uri.replace(/&/g, '&amp;');
-  const metadata = `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="00030020${encodedUri}" restricted="true"><upnp:class>object.container.playlistContainer</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON${region}_X_#Svc${region}-0-Token</desc></item></DIDL-Lite>`;
+  const sources = [];
+  try { sources.push(...(await getSonosFavorites(ip))); } catch {}
+  try { sources.push(...(await getSonosPlaylists(ip))); } catch {}
 
-  await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'AddURIToQueue',
-    `<InstanceID>0</InstanceID><EnqueuedURI>x-rincon-cpcontainer:0006206c${encodedUri}</EnqueuedURI><EnqueuedURIMetaData>${metadata.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>`,
-  );
+  for (const item of sources) {
+    if (!isSpotifyContainer(item.uri)) continue;
+    const typeMatch = item.uri.match(/spotify%3[Aa]([a-z]+)%3[Aa]/);
+    if (!typeMatch) continue;
+    const template = {type: typeMatch[1], uri: item.uri, resMD: item.resMD || ''};
+    _spotifyTemplateCache.set(ip, template);
+    return template;
+  }
+  _spotifyTemplateCache.set(ip, null);
+  return null;
+};
 
-  // Play from queue
-  await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'Play',
-    '<InstanceID>0</InstanceID><Speed>1</Speed>',
+// Replace the spotify%3A{type}%3A{id} payload inside a Sonos URI/resMD with a new id.
+// Keeps everything else (prefix, flags, sid, sn, account desc) byte-for-byte identical.
+const substituteSpotifyId = (str, newType, newId) => {
+  if (typeof str !== 'string') return str;
+  return str.replace(
+    /spotify%3[Aa]([a-z]+)%3[Aa]([A-Za-z0-9]+)/g,
+    `spotify%3A${newType}%3A${newId}`,
   );
+};
+
+// Play a Spotify URI (spotify:playlist:..., spotify:album:..., spotify:track:...)
+// via the Sonos system's authenticated Spotify service.
+export const playSpotifyURI = async (ip, spotifyUri) => {
+  const parts = spotifyUri.split(':');
+  if (parts.length < 3 || parts[0] !== 'spotify') {
+    console.warn('Bad Spotify URI:', spotifyUri);
+    return;
+  }
+  const newType = parts[1];
+  const newId = parts[2];
+
+  const template = await getSpotifyTemplate(ip);
+  if (!template) {
+    console.warn('Cannot play Spotify: no template — save any Spotify item as a Sonos favorite first');
+    return;
+  }
+
+  const sonosUri = substituteSpotifyId(template.uri, newType, newId);
+  const resMD = substituteSpotifyId(template.resMD, newType, newId);
+  await playFavorite(ip, {uri: sonosUri, resMD});
 };
 
 // Play TuneIn radio
@@ -607,14 +623,13 @@ export const getDeviceUUID = async (ip) => {
   }
 };
 
-// Play a Sonos favorite
+// Play a Sonos favorite (or any item with {uri, resMD?})
 export const playFavorite = async (ip, favorite) => {
   try {
     const uri = favorite.uri;
     const metadata = favorite.resMD || '';
     const encodedUri = uri.replace(/&/g, '&amp;');
 
-    // Container URIs (playlists, albums) need queue-based playback
     const isContainer =
       uri.startsWith('x-rincon-cpcontainer:') ||
       uri.startsWith('x-rincon-playlist:') ||
@@ -622,12 +637,8 @@ export const playFavorite = async (ip, favorite) => {
 
     if (isContainer) {
       const uuid = await getDeviceUUID(ip);
-      if (!uuid) {
-        console.warn('Could not get device UUID for queue playback');
-        return;
-      }
+      if (!uuid) return;
 
-      // Clear queue
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -635,8 +646,6 @@ export const playFavorite = async (ip, favorite) => {
         'RemoveAllTracksFromQueue',
         '<InstanceID>0</InstanceID>',
       );
-
-      // Add container to queue
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -644,8 +653,6 @@ export const playFavorite = async (ip, favorite) => {
         'AddURIToQueue',
         `<InstanceID>0</InstanceID><EnqueuedURI>${encodedUri}</EnqueuedURI><EnqueuedURIMetaData>${metadata}</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>`,
       );
-
-      // Switch transport to the queue
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -653,8 +660,6 @@ export const playFavorite = async (ip, favorite) => {
         'SetAVTransportURI',
         `<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:${uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
       );
-
-      // Play
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -663,7 +668,6 @@ export const playFavorite = async (ip, favorite) => {
         '<InstanceID>0</InstanceID><Speed>1</Speed>',
       );
     } else {
-      // Direct playback for streams / radio / single tracks
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -671,7 +675,6 @@ export const playFavorite = async (ip, favorite) => {
         'SetAVTransportURI',
         `<InstanceID>0</InstanceID><CurrentURI>${encodedUri}</CurrentURI><CurrentURIMetaData>${metadata}</CurrentURIMetaData>`,
       );
-
       await soapRequest(
         ip,
         '/MediaRenderer/AVTransport/Control',
@@ -687,12 +690,36 @@ export const playFavorite = async (ip, favorite) => {
 
 // Parse HH:MM:SS duration to seconds
 const parseDuration = (str) => {
-  if (!str || str === 'NOT_IMPLEMENTED') {
-    return 0;
-  }
+  if (!str || str === 'NOT_IMPLEMENTED') return 0;
   const parts = str.split(':').map(Number);
-  if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   return 0;
+};
+
+// Substring search across favorites + saved playlists + local library on the Sonos.
+// Spotify catalog search lives in spotifyOAuthService and is merged in by the SearchPopup.
+export const searchAllSonos = async (ip, query) => {
+  if (!ip || !query || !query.trim()) return [];
+  const trimmed = query.trim();
+  const lower = trimmed.toLowerCase();
+  const matchesLocal = (title) => title && title.toLowerCase().includes(lower);
+
+  const [favs, playlists, libResults] = await Promise.all([
+    getSonosFavorites(ip).catch(() => []),
+    getSonosPlaylists(ip).catch(() => []),
+    searchSonosLibrary(ip, trimmed).catch(() => []),
+  ]);
+
+  const favHits = favs
+    .filter((f) => matchesLocal(f.title))
+    .map((f) => ({...f, source: 'favorite'}));
+  const playlistHits = playlists.filter((p) => matchesLocal(p.title));
+
+  const merged = [...favHits, ...playlistHits, ...libResults];
+  const seen = new Set();
+  return merged.filter((r) => {
+    if (!r.uri || seen.has(r.uri)) return false;
+    seen.add(r.uri);
+    return true;
+  });
 };

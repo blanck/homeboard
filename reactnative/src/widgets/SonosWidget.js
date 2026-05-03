@@ -83,7 +83,7 @@ const SonosWidget = () => {
         if (allFailed) {
           failuresRef.current += 1;
           if (failuresRef.current >= 3) {
-            rediscover();
+            rediscover().catch((e) => console.warn('[poll rediscover]', e?.message || String(e)));
           }
           return;
         }
@@ -95,12 +95,14 @@ const SonosWidget = () => {
         if (playMode) setSonosShuffle(playMode.includes('SHUFFLE'));
         // Persist UUID for future rediscovery — runs once on first success or after recovery
         if (!persistedUuidRef.current || wasFailing) {
-          sonosService.getDeviceUUID(sonosIp).then((uuid) => {
-            if (uuid) {
-              persistedUuidRef.current = uuid;
-              AsyncStorage.setItem(SONOS_UUID_KEY, uuid).catch(() => {});
-            }
-          });
+          sonosService.getDeviceUUID(sonosIp)
+            .then((uuid) => {
+              if (uuid) {
+                persistedUuidRef.current = uuid;
+                AsyncStorage.setItem(SONOS_UUID_KEY, uuid).catch(() => {});
+              }
+            })
+            .catch((e) => console.warn('[poll getDeviceUUID]', e?.message || String(e)));
         }
       } finally {
         inFlightRef.current = false;

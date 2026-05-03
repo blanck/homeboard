@@ -1,5 +1,6 @@
 import React, {useEffect, useCallback, useState, useRef} from 'react';
 import {View, StyleSheet, TouchableOpacity, Text, StatusBar, ImageBackground} from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from './store';
 import usePolling from './hooks/usePolling';
@@ -28,6 +29,7 @@ import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 import SettingsModal from './components/SettingsModal';
 import NewsPopup from './components/NewsPopup';
 import PlaylistPopup from './components/PlaylistPopup';
+import SearchPopup from './components/SearchPopup';
 
 // Services
 import {fetchCurrentWeather, fetchForecast, fetchNetatmoForecast, fetchNetatmoPublicForecast} from './services/weatherService';
@@ -42,6 +44,7 @@ const bgBeach = require('./assets/images/beach.jpg');
 const bgNight = require('./assets/images/night.jpg');
 
 const Dashboard = () => {
+  const insets = useSafeAreaInsets();
   const config = useStore((s) => s.config);
   const setWeather = useStore((s) => s.setWeather);
   const setCurrentCondition = useStore((s) => s.setCurrentCondition);
@@ -239,7 +242,16 @@ const Dashboard = () => {
 
   return (
     <ImageBackground source={bgSource} style={styles.background} resizeMode="cover">
-      <View style={styles.container}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: 20 + insets.top,
+            paddingBottom: 20 + insets.bottom,
+            paddingLeft: 20 + insets.left,
+            paddingRight: 20 + insets.right,
+          },
+        ]}>
         <StatusBar hidden />
 
         {/* Row 1: Weather | Clock | Forecast */}
@@ -331,6 +343,7 @@ const Dashboard = () => {
         <SettingsModal />
         <NewsPopup />
         <PlaylistPopup />
+        <SearchPopup />
       </View>
     </ImageBackground>
   );
@@ -343,7 +356,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    padding: 20,
   },
   // Row 1 - 28% height
   topRow: {

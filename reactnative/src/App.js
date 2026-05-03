@@ -1,16 +1,18 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Linking } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { Linking } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Dashboard from './Dashboard';
 import useStore from './store';
 import { loadSettings } from './components/SettingsModal';
 import { exchangeCodeForTokens } from './services/tibberOAuthService';
+import { exchangeCodeForTokens as exchangeSpotifyCode } from './services/spotifyOAuthService';
 
 const App = () => {
   const setConfig = useStore(s => s.setConfig);
   const setKeepAwake = useStore(s => s.setKeepAwake);
 
   const setTibberDataApiConnected = useStore(s => s.setTibberDataApiConnected);
+  const setSpotifyConnected = useStore(s => s.setSpotifyConnected);
 
   // Load saved settings on startup
   useEffect(() => {
@@ -27,16 +29,21 @@ const App = () => {
   // Handle OAuth deep links
   useEffect(() => {
     const handleUrl = async (url) => {
-      if (!url || !url.startsWith('homeboard://oauth/tibber')) return;
+      if (!url) return;
       try {
         const queryString = url.split('?')[1] || '';
         const params = new URLSearchParams(queryString);
         const code = params.get('code');
         const state = params.get('state');
-        if (code && state) {
+        if (!code || !state) return;
+        if (url.startsWith('homeboard://oauth/tibber')) {
           await exchangeCodeForTokens(code, state);
           setTibberDataApiConnected(true);
           console.warn('Tibber Data API: OAuth connected');
+        } else if (url.startsWith('homeboard://oauth/spotify')) {
+          await exchangeSpotifyCode(code, state);
+          setSpotifyConnected(true);
+          console.warn('Spotify: OAuth connected');
         }
       } catch (err) {
         console.warn('OAuth callback error:', err);
@@ -49,25 +56,13 @@ const App = () => {
     // Warm start
     const sub = Linking.addEventListener('url', ({url}) => handleUrl(url));
     return () => sub.remove();
-  }, [setTibberDataApiConnected]);
+  }, [setTibberDataApiConnected, setSpotifyConnected]);
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView
-        style={styles.container}
-        edges={['top', 'bottom', 'left', 'right']}
-      >
-        <Dashboard />
-      </SafeAreaView>
+      <Dashboard />
     </SafeAreaProvider>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-});
 
 export default App;

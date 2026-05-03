@@ -2,20 +2,21 @@ import React, {useRef} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
+import {translate} from '../utils/translations';
 import {fs, sp} from '../utils/scale';
+
+const MAX_QUICK_PICKS = 5;
 
 const PlaylistWidget = () => {
   const config = useStore((s) => s.config);
   const showPlaylist = useStore((s) => s.showPlaylist);
   const showQuickPick = useStore((s) => s.showQuickPick);
+  const showSearch = useStore((s) => s.showSearch);
+  const lang = config.language || 'en';
   const refs = useRef({});
 
   const playlists = config.playlist ? Object.entries(config.playlist) : [];
   const quickPicks = config.quickPicks || [];
-
-  if (playlists.length === 0 && quickPicks.length === 0) {
-    return null;
-  }
 
   const measureAndShow = (refKey, callback) => {
     const ref = refs.current[refKey];
@@ -28,24 +29,37 @@ const PlaylistWidget = () => {
     }
   };
 
-  const allButtons = [
-    ...quickPicks.map((category, index) => ({
+  const cappedQuickPicks = quickPicks.slice(0, MAX_QUICK_PICKS);
+  const remainingSlots = MAX_QUICK_PICKS - cappedQuickPicks.length;
+  const cappedPlaylists = playlists.slice(0, remainingSlots);
+
+  const dataButtons = [
+    ...cappedQuickPicks.map((category, index) => ({
       key: `qp-${index}`,
       label: category.name,
+      icon: 'music',
       onPress: (anchor) => showQuickPick(category, anchor),
     })),
-    ...playlists.map(([key, item]) => ({
+    ...cappedPlaylists.map(([key, item]) => ({
       key,
       label: item.title,
+      icon: 'music',
       onPress: (anchor) => showPlaylist({key, ...item}, anchor),
     })),
-  ].slice(0, 6);
+  ];
 
-  // Fill to 6 slots for consistent grid
-  const COL_COUNT = 2;
+  const searchButton = {
+    key: 'search',
+    label: translate('search', lang),
+    icon: 'magnify',
+    onPress: (anchor) => showSearch(anchor),
+  };
+
+  const allButtons = [...dataButtons, searchButton];
+
   const ROW_COUNT = 3;
   const left = allButtons.slice(0, ROW_COUNT);
-  const right = allButtons.slice(ROW_COUNT, ROW_COUNT * COL_COUNT);
+  const right = allButtons.slice(ROW_COUNT, ROW_COUNT * 2);
 
   return (
     <View style={styles.container}>
@@ -57,7 +71,7 @@ const PlaylistWidget = () => {
               ref={(r) => { refs.current[btn.key] = r; }}
               style={styles.button}
               onPress={() => measureAndShow(btn.key, btn.onPress)}>
-              <Icon name="music" size={sp(18)} color="#ffffff" style={styles.icon} />
+              <Icon name={btn.icon} size={sp(18)} color="#ffffff" style={styles.icon} />
               <Text style={styles.buttonText} numberOfLines={1}>{btn.label}</Text>
             </TouchableOpacity>
           ))}
@@ -69,7 +83,7 @@ const PlaylistWidget = () => {
               ref={(r) => { refs.current[btn.key] = r; }}
               style={styles.button}
               onPress={() => measureAndShow(btn.key, btn.onPress)}>
-              <Icon name="music" size={sp(18)} color="#ffffff" style={styles.icon} />
+              <Icon name={btn.icon} size={sp(18)} color="#ffffff" style={styles.icon} />
               <Text style={styles.buttonText} numberOfLines={1}>{btn.label}</Text>
             </TouchableOpacity>
           ))}
