@@ -11,7 +11,8 @@ Personal home dashboard for a wall-mounted tablet. **Public GitHub repo** — as
 
 - **Never commit API keys or credentials.** This repo is public.
 - Personal config lives in `config.js` (root) — gitignored. `config.sample.js` is the placeholder template; keep it stripped of real keys.
-- React Native: secrets (API keys, OAuth tokens, passwords) go in `EncryptedStorage` (Keychain/Keystore). Non-secret preferences go in `AsyncStorage`. See `src/components/SettingsModal.js` for the split.
+- React Native: user-supplied secrets (API keys, OAuth tokens, passwords) go in `EncryptedStorage` (Keychain/Keystore). Non-secret preferences go in `AsyncStorage`. See `src/components/SettingsModal.js` for the split.
+- Tibber OAuth `CLIENT_ID` / `CLIENT_SECRET` are read from `reactnative/src/secrets.local.js` (gitignored). `secrets.local.example.js` is the committed template. `npm install` runs a postinstall that copies the example to the real file if missing. The release workflow (`.github/workflows/release.yml`) overwrites that file from GitHub Secrets before building, so APKs in Releases ship with creds baked in but the source repo stays clean.
 - Don't print secrets to logs. Existing `console.warn` calls in `lamarzoccoService.js` that dumped tokens are commented out — keep them that way.
 
 ## React Native architecture (`reactnative/src/`)
