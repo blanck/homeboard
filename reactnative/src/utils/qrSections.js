@@ -34,13 +34,16 @@ export const buildSectionData = (key, form) => {
         form.tibberHomeId,
       ].join('|');
     case 'news':
-      return [
-        form.newsapiKey,
-        form.newsSources,
-        form.newsLanguage,
-        form.newsExclude,
-        form.newsCategories,
-      ].join('|');
+      return JSON.stringify({
+        newsProvider: form.newsProvider || 'newsdata',
+        newsKeyNewsdata: form.newsKeyNewsdata || '',
+        newsKeyThenewsapi: form.newsKeyThenewsapi || '',
+        newsKeyCurrents: form.newsKeyCurrents || '',
+        newsSources: form.newsSources || '',
+        newsLanguage: form.newsLanguage || 'en',
+        newsExclude: form.newsExclude || '',
+        newsCategories: form.newsCategories || '',
+      });
     case 'stocks':
       return form.quotes;
     case 'calendar':
@@ -98,14 +101,28 @@ export const parseSectionData = (key, data) => {
         tibberApiKey: p[0] || '',
         tibberHomeId: p[1] || '',
       };
-    case 'news':
-      return {
-        newsapiKey: p[0] || '',
-        newsSources: p[1] || '',
-        newsLanguage: p[2] || 'en',
-        newsExclude: p[3] || '',
-        newsCategories: p[4] || '',
-      };
+    case 'news': {
+      try {
+        const m = JSON.parse(data);
+        return {
+          newsProvider: m.newsProvider || 'newsdata',
+          newsKeyNewsdata: m.newsKeyNewsdata || '',
+          newsKeyThenewsapi: m.newsKeyThenewsapi || '',
+          newsKeyCurrents: m.newsKeyCurrents || '',
+          newsSources: m.newsSources || '',
+          newsLanguage: m.newsLanguage || 'en',
+          newsExclude: m.newsExclude || '',
+          newsCategories: m.newsCategories || '',
+        };
+      } catch (e) {
+        return {
+          newsSources: p[1] || '',
+          newsLanguage: p[2] || 'en',
+          newsExclude: p[3] || '',
+          newsCategories: p[4] || '',
+        };
+      }
+    }
     case 'stocks':
       return {quotes: data};
     case 'calendar':

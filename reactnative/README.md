@@ -1,5 +1,47 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+# Homeboard dev notes
+
+## Running on the Android emulator with LAN-sync support
+
+The settings sync feature uses UDP multicast on `239.255.255.251:41234`. The Android emulator runs behind QEMU's NAT, so multicast discovery doesn't reach the guest and replies to the host's port `41234` aren't forwarded back. Workaround:
+
+```sh
+# 1. Start the emulator (any AVD)
+emulator -avd Medium_Tablet
+
+# 2. Once it's booted, forward inbound UDP 41234 into the guest
+adb -s emulator-5554 emu redir add udp:41234:41234
+```
+
+The redirect doesn't persist — re-run the second command after each emulator boot. macOS may prompt to allow incoming UDP on `41234` the first time; click Allow.
+
+In the app's **Settings → Share** tab, the "Devices Nearby" section has a manual IP input row. Multicast discovery still won't reach the emulator, so type the receiver tablet's LAN IP there and tap **Send to IP**. Outbound unicast works through NAT, and the redirect catches the reply.
+
+## Wireless ADB to a physical tablet
+
+```sh
+# On the tablet: Settings → System → Developer options → Wireless debugging → on
+# Tap "Pair device with pairing code" — note the pair port + 6-digit code
+
+adb pair <tablet_ip>:<pair_port>          # one-time per Mac/tablet
+adb connect <tablet_ip>:<connect_port>    # the other port shown on the Wireless debugging screen
+adb devices                                # confirm tablet appears
+```
+
+Pairing only needs to happen once; on later sessions just `adb connect <ip>:<port>` after re-enabling wireless debugging.
+
+## Release install on the tablet
+
+`react-native run-android` always tries to start Metro and prompts about port conflicts. For a release install, skip the wrapper and use gradle directly:
+
+```sh
+cd reactnative/android
+ANDROID_SERIAL=<tablet_ip>:<port> ./gradlew installRelease
+```
+
+Release uses the debug keystore (good enough for personal sideload). The JS bundle is baked into the APK, so no Metro is needed at runtime.
+
 # Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.

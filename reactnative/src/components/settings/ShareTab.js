@@ -16,17 +16,9 @@ import {buildSectionData, parseQrValue} from '../../utils/qrSections';
 import {
   SYNC_PORT,
   MULTICAST_ADDR,
-  generateKeypair,
-  deriveSharedKey,
-  encrypt,
-  decrypt,
   newRequestId,
   buildAnnounce,
-  buildRequest,
-  buildAccept,
-  buildDecline,
-  buildData,
-  buildChunk,
+  buildSend,
   parseMessage,
 } from '../../utils/lanSync';
 
@@ -45,7 +37,6 @@ const DEVICE_NAME_KEY = 'homeboard_device_name';
 const DEVICE_ID_KEY = 'homeboard_device_id';
 const ANNOUNCE_INTERVAL = 4000;
 const DEVICE_TTL = 12000;
-const REQUEST_TIMEOUT = 30000;
 
 const randomHex = (n) => {
   const bytes = new Uint8Array(n);
@@ -65,13 +56,12 @@ const ShareTab = ({form, updateField, lang, Section}) => {
   const [sending, setSending] = useState(null);
   const [received, setReceived] = useState(null);
   const [incoming, setIncoming] = useState(null);
+  const [manualIp, setManualIp] = useState('');
 
   const socketRef = useRef(null);
   const announceTimerRef = useRef(null);
   const sweepTimerRef = useRef(null);
-  const pendingRequestsRef = useRef({});
-  const incomingHandshakesRef = useRef({});
-  const chunkBuffersRef = useRef({});
+  const incomingPayloadRef = useRef(null);
   const deviceNameRef = useRef('');
   const deviceIdRef = useRef('');
 
@@ -111,22 +101,7 @@ const ShareTab = ({form, updateField, lang, Section}) => {
     if (!sock) return;
     try {
       sock.send(message, undefined, undefined, SYNC_PORT, addr, () => {});
-    } catch (e) {
-      console.warn('send failed:', e);
-    }
-  };
-
-  const sendChunked = (reqId, payload, addr) => {
-    const MAX = 1200;
-    if (payload.length <= MAX) {
-      sendRaw(buildData(reqId, payload), addr);
-      return;
-    }
-    const total = Math.ceil(payload.length / MAX);
-    for (let i = 0; i < total; i++) {
-      const chunk = payload.slice(i * MAX, (i + 1) * MAX);
-      sendRaw(buildChunk(reqId, i, total, chunk), addr);
-    }
+    } catch (e) {}
   };
 
   const announce = () => {
@@ -153,13 +128,8 @@ const ShareTab = ({form, updateField, lang, Section}) => {
     const socket = dgram.createSocket({type: 'udp4', reusePort: true});
     socketRef.current = socket;
 
-    socket.on('error', (err) => {
-      console.warn('Sync socket error:', err);
-    });
-
     socket.on('message', (msg, rinfo) => {
-      const value = msg.toString();
-      const parsed = parseMessage(value);
+      const parsed = parseMessage(msg.toString());
       if (!parsed) return;
 
       if (parsed.type === 'HBANN') {
@@ -171,89 +141,25 @@ const ShareTab = ({form, updateField, lang, Section}) => {
         return;
       }
 
-      if (parsed.type === 'HBREQ') {
-        if (parsed.senderId === deviceIdRef.current) return;
-        if (incomingHandshakesRef.current[parsed.reqId]) return;
-        incomingHandshakesRef.current[parsed.reqId] = {
-          senderId: parsed.senderId,
+      if (parsed.type === 'HBSEND') {
+        incomingPayloadRef.current = {
+          reqId: parsed.reqId,
           senderName: parsed.senderName,
           section: parsed.section,
-          senderPub: parsed.senderPub,
-          addr: rinfo.address,
+          data: parsed.data,
         };
         setIncoming({
           reqId: parsed.reqId,
           senderName: parsed.senderName,
           section: parsed.section,
         });
-        return;
-      }
-
-      if (parsed.type === 'HBOK') {
-        const pending = pendingRequestsRef.current[parsed.reqId];
-        if (!pending) return;
-        try {
-          const sharedKey = deriveSharedKey(pending.priv, parsed.receiverPub);
-          const ciphertext = encrypt(sharedKey, pending.payload);
-          sendChunked(parsed.reqId, ciphertext, pending.addr);
-          setSending(pending.section);
-          setTimeout(() => setSending(null), 2000);
-        } catch (e) {
-          console.warn('encrypt error:', e);
-        } finally {
-          delete pendingRequestsRef.current[parsed.reqId];
-        }
-        return;
-      }
-
-      if (parsed.type === 'HBNO') {
-        delete pendingRequestsRef.current[parsed.reqId];
-        return;
-      }
-
-      if (parsed.type === 'HBDATA' || parsed.type === 'HBCHUNK') {
-        const handshake = incomingHandshakesRef.current[parsed.reqId];
-        if (!handshake || !handshake.sharedKey) return;
-
-        let ciphertext = null;
-        if (parsed.type === 'HBDATA') {
-          ciphertext = parsed.ciphertext;
-        } else {
-          const buf = chunkBuffersRef.current[parsed.reqId] || {parts: {}, total: parsed.total};
-          buf.parts[parsed.idx] = parsed.chunk;
-          chunkBuffersRef.current[parsed.reqId] = buf;
-          if (Object.keys(buf.parts).length === buf.total) {
-            ciphertext = '';
-            for (let i = 0; i < buf.total; i++) ciphertext += buf.parts[i];
-            delete chunkBuffersRef.current[parsed.reqId];
-          }
-        }
-        if (ciphertext === null) return;
-
-        const plaintext = decrypt(handshake.sharedKey, ciphertext);
-        delete incomingHandshakesRef.current[parsed.reqId];
-        if (!plaintext) {
-          console.warn('decrypt failed for req', parsed.reqId);
-          return;
-        }
-        const wire = `HB:${handshake.section}:${plaintext}`;
-        const result = parseQrValue(wire);
-        if (result) {
-          for (const [k, v] of Object.entries(result.fields)) {
-            updateField(k, v);
-          }
-          setReceived(result.section);
-          setTimeout(() => setReceived(null), 4000);
-        }
       }
     });
 
     socket.bind(SYNC_PORT, () => {
       try {
         socket.addMembership(MULTICAST_ADDR);
-      } catch (e) {
-        console.warn('addMembership failed:', e);
-      }
+      } catch (e) {}
       try {
         socket.setBroadcast(true);
       } catch (e) {}
@@ -267,9 +173,7 @@ const ShareTab = ({form, updateField, lang, Section}) => {
       if (sweepTimerRef.current) clearInterval(sweepTimerRef.current);
       try { socket.close(); } catch (e) {}
       socketRef.current = null;
-      pendingRequestsRef.current = {};
-      incomingHandshakesRef.current = {};
-      chunkBuffersRef.current = {};
+      incomingPayloadRef.current = null;
     };
   }, [deviceId]);
 
@@ -286,45 +190,33 @@ const ShareTab = ({form, updateField, lang, Section}) => {
       return;
     }
     const reqId = newRequestId();
-    const {priv, pub} = generateKeypair();
     const data = buildSectionData(selectedSection, form);
-
-    pendingRequestsRef.current[reqId] = {
-      section: selectedSection,
-      priv,
-      payload: data,
-      addr: device.addr,
-    };
-    setTimeout(() => {
-      delete pendingRequestsRef.current[reqId];
-    }, REQUEST_TIMEOUT);
-
-    sendRaw(
-      buildRequest(reqId, deviceIdRef.current, deviceNameRef.current, selectedSection, pub),
-      device.addr,
-    );
+    sendRaw(buildSend(reqId, deviceNameRef.current, selectedSection, data), device.addr);
+    setSending(selectedSection);
+    setTimeout(() => setSending(null), 2000);
   };
 
   const handleAccept = () => {
-    if (!incoming) return;
-    const handshake = incomingHandshakesRef.current[incoming.reqId];
-    if (!handshake) {
+    const payload = incomingPayloadRef.current;
+    if (!payload) {
       setIncoming(null);
       return;
     }
-    const {priv, pub} = generateKeypair();
-    handshake.sharedKey = deriveSharedKey(priv, handshake.senderPub);
-    sendRaw(buildAccept(incoming.reqId, pub), handshake.addr);
+    const wire = `HB:${payload.section}:${payload.data}`;
+    const result = parseQrValue(wire);
+    if (result) {
+      for (const [k, v] of Object.entries(result.fields)) {
+        updateField(k, v);
+      }
+      setReceived(result.section);
+      setTimeout(() => setReceived(null), 4000);
+    }
+    incomingPayloadRef.current = null;
     setIncoming(null);
   };
 
   const handleDecline = () => {
-    if (!incoming) return;
-    const handshake = incomingHandshakesRef.current[incoming.reqId];
-    if (handshake) {
-      sendRaw(buildDecline(incoming.reqId), handshake.addr);
-      delete incomingHandshakesRef.current[incoming.reqId];
-    }
+    incomingPayloadRef.current = null;
     setIncoming(null);
   };
 
@@ -408,6 +300,29 @@ const ShareTab = ({form, updateField, lang, Section}) => {
             </TouchableOpacity>
           ))
         )}
+        <View style={styles.manualRow}>
+          <Icon name="ip-network" size={20} color="#cccccc" />
+          <TextInput
+            style={styles.manualInput}
+            value={manualIp}
+            onChangeText={setManualIp}
+            placeholder={translate('ipPlaceholder', lang)}
+            placeholderTextColor="#555"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numbers-and-punctuation"
+          />
+          <TouchableOpacity
+            style={[styles.manualSendBtn, (!selectedSection || !manualIp.trim()) && styles.deviceRowDisabled]}
+            disabled={!selectedSection || !manualIp.trim()}
+            onPress={() => {
+              const ip = manualIp.trim();
+              if (!ip) return;
+              handleSendToDevice({id: `manual-${ip}`, name: ip, addr: ip});
+            }}>
+            <Text style={styles.manualSendText}>{translate('sendToIp', lang)}</Text>
+          </TouchableOpacity>
+        </View>
         {received && (
           <View style={styles.receivedBanner}>
             <Icon name="check-circle" size={18} color="#4CAF50" />
@@ -491,6 +406,33 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     flex: 1,
+  },
+  manualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginTop: 6,
+    gap: 10,
+  },
+  manualInput: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+    paddingVertical: 6,
+  },
+  manualSendBtn: {
+    backgroundColor: '#1B4781',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  manualSendText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   incomingBanner: {
     flexDirection: 'row',
