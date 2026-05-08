@@ -5,6 +5,16 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (used when triggered manually)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -12,12 +22,30 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: reactnative
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            LAST=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            LAST=${LAST:-v0.0.0}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST#v}"
+            case "${{ inputs.bump }}" in
+              major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0;;
+              minor) MINOR=$((MINOR+1)); PATCH=0;;
+              patch) PATCH=$((PATCH+1));;
+            esac
+            VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Computed version: ${VERSION}"
 
       - uses: actions/setup-node@v4
         with:
@@ -33,9 +61,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Install JS dependencies
+        working-directory: reactnative
         run: npm ci
 
       - name: Inject Tibber OAuth credentials
+        working-directory: reactnative
         env:
           TIBBER_CLIENT_ID: ${{ secrets.TIBBER_CLIENT_ID }}
           TIBBER_CLIENT_SECRET: ${{ secrets.TIBBER_CLIENT_SECRET }}
@@ -55,22 +85,16 @@ jobs:
 
       - name: Stage APK
         run: |
-          mkdir -p ../dist
-          cp android/app/build/outputs/apk/release/app-release.apk \
-             "../dist/homeboard-${GITHUB_REF_NAME}.apk"
-          ls -la ../dist
-
-      - name: Upload APK as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: homeboard-apk-${{ github.ref_name }}
-          path: dist/homeboard-*.apk
-          if-no-files-found: error
+          mkdir -p dist
+          cp reactnative/android/app/build/outputs/apk/release/app-release.apk \
+             "dist/homeboard-${{ steps.version.outputs.version }}.apk"
+          ls -la dist
 
       - name: Publish to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: dist/homeboard-*.apk
           generate_release_notes: true
           fail_on_unmatched_files: true
