@@ -38,6 +38,12 @@ Forks: deploy your own forwarder pages (`firebase deploy --only hosting`) and ch
 
 Assumes the base system setup from the root readme (Chromium, X11, nvm, pm2).
 
+**Chromium requirement (important)**: the kiosk browser must be **Chromium 84 or newer**. Older Buster installs shipped Chromium 78, which renders the dashboard with all flexbox gaps collapsed (the bundle's JS itself is built to parse on 78, but `gap` support arrived in 84). Buster's own archive has 92, so this is one command:
+
+```sh
+sudo apt-get update && sudo apt-get install -y chromium-browser   # 78 -> 92 on Buster
+```
+
 **Node requirements**: the server (`server.mjs`) runs on Node 16+, deliberately, because Raspbian Buster's libstdc++ cannot run Node 18+. Building the bundle (Vite) needs Node 18+, so on a Buster Pi you build on your dev machine and push with `web/deploy-to-pi.sh` (rsyncs `dist/` + `server.mjs`, installs `ws`, swaps the pm2 process, refreshes the kiosk browser). On a Pi with a newer OS you can build on-device instead:
 
 ```sh
