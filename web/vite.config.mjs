@@ -54,5 +54,7 @@ export default defineConfig({
       '/udp-bridge': {target: 'ws://localhost:8080', ws: true},
     },
   },
-  build: {outDir: 'dist'},
+  // chrome78: the Pi kiosk runs Raspbian Buster's Chromium 78, which cannot
+  // parse optional chaining / nullish coalescing
+  build: {outDir: 'dist', target: 'chrome78'},
 });

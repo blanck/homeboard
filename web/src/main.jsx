@@ -1,3 +1,4 @@
+import './polyfills';
 import './runtime';
 import {AppRegistry} from 'react-native-web';
 import App from '@homeboard/rn/App';
