@@ -4,7 +4,8 @@ import defaults from '../config/defaults';
 const useStore = create((set, get) => ({
   // Config
   config: {...defaults},
-  setConfig: (config) => set({config: {...defaults, ...config}}),
+  configLoaded: false,
+  setConfig: (config) => set({config: {...defaults, ...config}, configLoaded: true}),
   updateConfig: (partial) =>
     set((state) => ({config: {...state.config, ...partial}})),
 

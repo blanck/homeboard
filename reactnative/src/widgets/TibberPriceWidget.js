@@ -1,5 +1,5 @@
-import React, {useMemo} from 'react';
-import {View, Text, StyleSheet, useWindowDimensions} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {View, Text, StyleSheet} from 'react-native';
 import useStore from '../store';
 import {translate} from '../utils/translations';
 import {energyColor} from '../utils/colors';
@@ -11,7 +11,7 @@ import {fs} from '../utils/scale';
 const TibberPriceWidget = () => {
   const tibber = useStore((s) => s.tibber);
   const config = useStore((s) => s.config);
-  const {width} = useWindowDimensions();
+  const [chartSize, setChartSize] = useState({width: 0, height: 0});
   const lang = config.language || 'en';
 
   // Build chart data — port of home.vue priceChart computed
@@ -62,18 +62,24 @@ const TibberPriceWidget = () => {
     return null;
   }
 
-  // Chart width = ~35% of screen
-  const chartWidth = Math.min(width * 0.33, 500);
-
   return (
     <WidgetCard variant="light">
       <Text style={styles.title}>{translate('prices', lang)}</Text>
-      <PriceChart
-        data={chartData}
-        currentPrice={currentPrice}
-        width={chartWidth}
-        height={200}
-      />
+      <View
+        style={styles.chartArea}
+        onLayout={(e) => {
+          const {width: w, height: h} = e.nativeEvent.layout;
+          setChartSize({width: Math.round(w), height: Math.round(h)});
+        }}>
+        {chartSize.width > 0 && chartSize.height > 0 ? (
+          <PriceChart
+            data={chartData}
+            currentPrice={currentPrice}
+            width={chartSize.width}
+            height={chartSize.height}
+          />
+        ) : null}
+      </View>
     </WidgetCard>
   );
 };
@@ -85,6 +91,9 @@ const styles = StyleSheet.create({
     color: '#555555',
     textTransform: 'uppercase',
     marginBottom: 4,
+  },
+  chartArea: {
+    flex: 1,
   },
 });
 

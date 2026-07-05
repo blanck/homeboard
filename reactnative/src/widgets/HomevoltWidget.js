@@ -81,14 +81,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: fs(11),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 8,
     textTransform: 'uppercase',
   },
   socRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   socText: {
     color: '#ffffff',
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     borderRadius: 3,
     overflow: 'hidden',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   barFill: {
     height: '100%',

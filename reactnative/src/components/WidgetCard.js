@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     margin: 4,
   },
   bottomContainer: {
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
     margin: 4,
     padding: 12,

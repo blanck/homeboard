@@ -149,6 +149,7 @@ const SettingsModal = () => {
           '',
         newsKeyThenewsapi: config.newsapi?.keys?.thenewsapi || '',
         newsKeyCurrents: config.newsapi?.keys?.currents || '',
+        newsKeyNewsapiorg: config.newsapi?.keys?.newsapiorg || '',
         newsSources: config.newsapi?.headlines?.sources || '',
         newsLanguage: config.newsapi?.headlines?.language || 'en',
         newsCategories: (config.newsapi?.headlines?.categories || []).join(','),
@@ -236,6 +237,7 @@ const SettingsModal = () => {
           newsdata: form.newsKeyNewsdata || '',
           thenewsapi: form.newsKeyThenewsapi || '',
           currents: form.newsKeyCurrents || '',
+          newsapiorg: form.newsKeyNewsapiorg || '',
         },
         headlines: {
           language: form.newsLanguage,
@@ -292,6 +294,7 @@ const SettingsModal = () => {
           newsdata: form.newsKeyNewsdata || '',
           thenewsapi: form.newsKeyThenewsapi || '',
           currents: form.newsKeyCurrents || '',
+          newsapiorg: form.newsKeyNewsapiorg || '',
         },
       },
     };
@@ -329,6 +332,7 @@ const SettingsModal = () => {
       form.newsKeyNewsdata !== (config.newsapi?.keys?.newsdata || '') ||
       form.newsKeyThenewsapi !== (config.newsapi?.keys?.thenewsapi || '') ||
       form.newsKeyCurrents !== (config.newsapi?.keys?.currents || '') ||
+      form.newsKeyNewsapiorg !== (config.newsapi?.keys?.newsapiorg || '') ||
       form.newsSources !== (config.newsapi?.headlines?.sources || '') ||
       form.newsLanguage !== (config.newsapi?.headlines?.language || 'en') ||
       form.newsCategories !== (config.newsapi?.headlines?.categories || []).join(',') ||

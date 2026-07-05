@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Homeboard</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+        font-family: Roboto, 'Helvetica Neue', 'Segoe UI', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        cursor: default;
+        user-select: none;
+      }
+      #root input,
+      #root textarea {
+        user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

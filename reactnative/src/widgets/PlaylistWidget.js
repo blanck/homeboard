@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   button: {
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
     paddingVertical: 14,
     paddingHorizontal: 18,

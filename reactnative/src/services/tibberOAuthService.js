@@ -1,3 +1,4 @@
+import {Platform} from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import 'react-native-get-random-values';
 import {fetchWithTimeout} from '../utils/fetchSafe';
@@ -5,7 +6,14 @@ import {TIBBER_CLIENT_ID, TIBBER_CLIENT_SECRET} from '../secrets.local';
 
 const CLIENT_ID = TIBBER_CLIENT_ID;
 const CLIENT_SECRET = TIBBER_CLIENT_SECRET;
-const REDIRECT_URI = 'homeboard://oauth/tibber';
+// On web, a static forwarder page on Firebase Hosting
+// (www/oauth/tibber/index.html) bounces the callback with its query back to
+// http://127.0.0.1:8080. Register this exact URI in the Tibber developer
+// console (thewall.tibber.com).
+const REDIRECT_URI =
+  Platform.OS === 'web'
+    ? 'https://homeboard-1.web.app/oauth/tibber'
+    : 'homeboard://oauth/tibber';
 const SCOPES = 'openid profile email offline_access data-api-user-read data-api-homes-read data-api-vehicles-read data-api-chargers-read data-api-thermostats-read data-api-energy-systems-read data-api-inverters-read';
 const AUTHORIZE_URL = 'https://thewall.tibber.com/connect/authorize';
 const TOKEN_URL = 'https://thewall.tibber.com/connect/token';

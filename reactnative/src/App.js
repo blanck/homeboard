@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Dashboard from './Dashboard';
 import useStore from './store';
@@ -36,14 +36,20 @@ const App = () => {
         const code = params.get('code');
         const state = params.get('state');
         if (!code || !state) return;
-        if (url.startsWith('homeboard://oauth/tibber')) {
+        // Matches both homeboard://oauth/x (native) and https://host/oauth/x (web)
+        if (url.includes('oauth/tibber')) {
           await exchangeCodeForTokens(code, state);
           setTibberDataApiConnected(true);
           console.warn('Tibber Data API: OAuth connected');
-        } else if (url.startsWith('homeboard://oauth/spotify')) {
+        } else if (url.includes('oauth/spotify')) {
           await exchangeSpotifyCode(code, state);
           setSpotifyConnected(true);
           console.warn('Spotify: OAuth connected');
+        } else {
+          return;
+        }
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.history.replaceState({}, '', '/');
         }
       } catch (err) {
         console.warn('OAuth callback error:', err);

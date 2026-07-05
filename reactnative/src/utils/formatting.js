@@ -3,12 +3,14 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import calendar from 'dayjs/plugin/calendar';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import advancedFormat from 'dayjs/plugin/advancedFormat';
 import 'dayjs/locale/sv';
 
 dayjs.extend(relativeTime);
 dayjs.extend(calendar);
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.extend(advancedFormat);
 
 // Time formatting — port of updateTime from home.vue:1302-1323
 // Falls back to device local time when no timezone is configured

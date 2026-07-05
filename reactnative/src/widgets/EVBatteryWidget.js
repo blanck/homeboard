@@ -63,14 +63,16 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: fs(11),
-    color: '#aaaaaa',
-    marginBottom: 2,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
   percent: {
     fontSize: fs(18),
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   barBg: {
     width: '80%',

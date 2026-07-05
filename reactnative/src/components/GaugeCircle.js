@@ -23,7 +23,7 @@ const GaugeCircle = ({
   const center = size / 2;
 
   return (
-    <View style={[styles.container, {width: size, height: size + 20}]}>
+    <View style={[styles.container, {width: size, height: labelText ? size + 20 : size}]}>
       <Svg width={size} height={size}>
         {/* Background circle */}
         <Circle

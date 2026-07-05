@@ -19,6 +19,7 @@ const NEWS_PROVIDERS = [
   {label: 'NewsData.io', value: 'newsdata', site: 'https://newsdata.io', formField: 'newsKeyNewsdata'},
   {label: 'TheNewsAPI', value: 'thenewsapi', site: 'https://www.thenewsapi.com', formField: 'newsKeyThenewsapi'},
   {label: 'CurrentsAPI', value: 'currents', site: 'https://currentsapi.services', formField: 'newsKeyCurrents'},
+  {label: 'NewsAPI.org', value: 'newsapiorg', site: 'https://newsapi.org', formField: 'newsKeyNewsapiorg'},
 ];
 
 // Each provider has its own set of valid categories

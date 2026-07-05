@@ -40,8 +40,8 @@ import {fetchTibberPrices, fetchTibberDevices, createTibberFeed} from './service
 import {fetchLaMarzoccoStatus} from './services/lamarzoccoService';
 
 // Background images
-const bgBeach = require('./assets/images/beach.jpg');
-const bgNight = require('./assets/images/night.jpg');
+import bgBeach from './assets/images/beach.jpg';
+import bgNight from './assets/images/night.jpg';
 
 const Dashboard = () => {
   const insets = useSafeAreaInsets();
@@ -63,6 +63,9 @@ const Dashboard = () => {
 
   const isTibberEnabled = config.energyProvider === 'tibber' || (config.energyProvider === undefined && !!config.tibber1?.apiEndpoint?.apiKey);
   const isOnline = useIsOnline();
+  // Hold polling until saved settings are loaded, otherwise the first fetch
+  // runs against defaults and real data waits a full poll interval
+  const configLoaded = useStore((s) => s.configLoaded);
 
   // Re-evaluate time periodically (for background switch and night mode)
   const [hour, setHour] = useState(() => new Date().getHours());
@@ -110,7 +113,7 @@ const Dashboard = () => {
     }
   }, [config, setWeather, setCurrentCondition, setArticles, setQuotes]);
 
-  usePolling(fetchMinutely, minuteInterval);
+  usePolling(fetchMinutely, minuteInterval, configLoaded);
 
   // Forecast + calendar + tibber prices — every 60 min
   const fetchHourly = useCallback(async () => {
@@ -174,7 +177,7 @@ const Dashboard = () => {
     }
   }, [config, isTibberEnabled, setForecast, setEvents, setTibber, setTibber2, setLaMarzocco]);
 
-  usePolling(fetchHourly, 60 * 60 * 1000);
+  usePolling(fetchHourly, 60 * 60 * 1000, configLoaded);
 
   // Refetch everything immediately when network reconnects
   useNetworkRefresh(useCallback(() => {
@@ -283,15 +286,18 @@ const Dashboard = () => {
         </View>
 
         {/* Row 3: Sonos | Playlists | Home (gauges, thermo, EV) */}
+        {/* The home panel gets extra width from the playlists, which only
+            need about 70% of a regular column */}
         <View style={styles.bottomRow}>
           <View style={styles.col35}>
             <SonosWidget />
           </View>
-          <View style={styles.col30}>
+          <View style={styles.colPlaylists}>
             <PlaylistWidget />
           </View>
-          <View style={styles.col35}>
-            {hasHomeWidgets ? (
+          <View style={styles.colHome}>
+            <View style={styles.homePanel}>
+              {hasHomeWidgets ? (
               <View style={styles.homeCol}>
                 {hasEnergyWidgets && <TibberGaugesWidget />}
                 {tibberFeed && tibberFeed.power ? (
@@ -320,7 +326,8 @@ const Dashboard = () => {
                   </View>
                 ) : null}
               </View>
-            ) : null}
+              ) : null}
+            </View>
           </View>
         </View>
 
@@ -380,20 +387,35 @@ const styles = StyleSheet.create({
   col30: {
     flex: 30,
   },
+  colPlaylists: {
+    flex: 21,
+  },
+  colHome: {
+    flex: 44,
+  },
+  // Dark panel that always fills the column, leaving visible room for
+  // future tiles
+  homePanel: {
+    flex: 1,
+    margin: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
   homeCol: {
-    flex: 35,
+    flex: 1,
     flexDirection: 'row',
     alignSelf: 'stretch',
     alignItems: 'stretch',
     justifyContent: 'flex-end',
-    gap: 4,
+    gap: 12,
   },
   homeCard: {
     flex: 1,
     maxWidth: 180,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 8,
-    padding: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },

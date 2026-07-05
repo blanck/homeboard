@@ -15,13 +15,22 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
     return null;
   }
 
-  const padding = {top: 20, right: 40, bottom: 30, left: 50};
+  const padding = {top: 24, right: 20, bottom: 34, left: 56};
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
+  // Round y-axis to a "nice" step (0.05 / 0.10 / 0.25 / ...) like the
+  // legacy chart, instead of arbitrary fractions of the data range
   const values = data.map((d) => d.value);
-  const minVal = Math.min(...values) * 0.9;
-  const maxVal = Math.max(...values) * 1.1;
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const span = rawMax - rawMin || 0.5;
+  const stepCandidates = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2];
+  const step =
+    stepCandidates.find((s) => span / s <= 4.5) ||
+    stepCandidates[stepCandidates.length - 1];
+  const minVal = Math.floor((rawMin - span * 0.06) / step) * step;
+  const maxVal = Math.ceil((rawMax + span * 0.06) / step) * step;
   const range = maxVal - minVal || 1;
 
   const xStep = chartW / (data.length - 1 || 1);
@@ -40,20 +49,22 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
     pathD += ` C ${cpx} ${prev.y}, ${cpx} ${curr.y}, ${curr.x} ${curr.y}`;
   }
 
-  // X-axis labels (every 3rd)
-  const xLabels = data.filter((_, i) => i % 3 === 0).map((d, i) => ({
-    label: String(d.name).padStart(2, '0'),
-    x: padding.left + (data.indexOf(d) >= 0 ? data.indexOf(d) : i * 3) * xStep,
-  }));
+  // X-axis labels: hourly like the legacy chart when there is room
+  const labelEvery = chartW / (data.length || 1) >= 26 ? 1 : 3;
+  const xLabels = data
+    .map((d, i) => ({
+      label: String(d.name).padStart(2, '0'),
+      x: padding.left + i * xStep,
+      idx: i,
+    }))
+    .filter((item) => item.idx % labelEvery === 0);
 
-  // Y-axis labels
-  const ySteps = 4;
+  // Y-axis labels at each nice step
   const yLabels = [];
-  for (let i = 0; i <= ySteps; i++) {
-    const val = minVal + (range * i) / ySteps;
+  for (let val = minVal; val <= maxVal + step / 2; val += step) {
     yLabels.push({
-      label: (Math.round(val * 100) / 100).toFixed(2),
-      y: padding.top + chartH - (i / ySteps) * chartH,
+      label: val.toFixed(2),
+      y: padding.top + chartH - ((val - minVal) / range) * chartH,
     });
   }
 
@@ -79,6 +90,24 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
             <Stop offset="100%" stopColor="#42b983" stopOpacity="1" />
           </LinearGradient>
         </Defs>
+
+        {/* Axis lines */}
+        <Line
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={padding.top + chartH}
+          stroke="rgba(70, 70, 90, 0.4)"
+          strokeWidth={1}
+        />
+        <Line
+          x1={padding.left}
+          y1={padding.top + chartH}
+          x2={width - padding.right}
+          y2={padding.top + chartH}
+          stroke="rgba(70, 70, 90, 0.4)"
+          strokeWidth={1}
+        />
 
         {/* Chart line */}
         <Path
@@ -122,11 +151,12 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
             x2={currentX}
             y2={padding.top + chartH}
             stroke="#0B77EF"
+            strokeOpacity={0.35}
             strokeWidth={2}
           />
         ) : null}
 
-        {/* Current price marker */}
+        {/* Current price marker: red dashed line + "HH:00: X.XX kr" label */}
         {markerY != null && currentPrice ? (
           <>
             <Line
@@ -134,16 +164,19 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
               y1={markerY}
               x2={width - padding.right}
               y2={markerY}
-              stroke="rgba(11, 119, 239, 0.5)"
+              stroke="#e0433d"
+              strokeOpacity={0.85}
               strokeWidth={1}
-              strokeDasharray="4,4"
+              strokeDasharray="5,4"
             />
             <SvgText
-              x={width - padding.right + 4}
-              y={markerY + 4}
-              fill="rgba(11, 119, 239, 0.7)"
-              fontSize="10">
-              {currentPrice.label}
+              x={width - padding.right - 4}
+              y={markerY - 6}
+              fill="#e0433d"
+              fontSize="11"
+              fontWeight="600"
+              textAnchor="end">
+              {`${currentHour.padStart(2, '0')}:00: ${currentPrice.value.toFixed(2)} kr`}
             </SvgText>
           </>
         ) : null}

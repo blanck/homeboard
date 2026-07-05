@@ -23,9 +23,15 @@ The active version. Easiest to install: grab a prebuilt APK and sideload it.
 
 For build-from-source instructions, contributing, and developer docs see [`reactnative/README.md`](reactnative/README.md).
 
-### Raspberry Pi (legacy web app)
+### Raspberry Pi / Linux kiosk (web): same app as Android
 
-The original version: a Vue/Framework7 web app served by a Node + socket.io backend, run as a kiosk on a Raspberry Pi 4 with a Dell P2418HT 24" touchscreen. Still maintained, but new development happens in the React Native version above.
+The React Native app rendered in a browser via react-native-web, served by a small Node server with a CORS proxy and UDP bridge, so it has full feature parity with the Android version (Sonos discovery, LAN settings sync, all widgets). Runs as a Chromium kiosk on a Raspberry Pi 4 with a Dell P2418HT 24" touchscreen, or on any Linux box with Node 20+ and Chromium.
+
+See [`web/README.md`](web/README.md) for installation, migration from the legacy app, and development docs. The base system setup (Chromium, X11, nvm, pm2, splash screen) in the legacy section below still applies to a fresh Pi.
+
+### Raspberry Pi (legacy web app, deprecated)
+
+The original version: a Vue/Framework7 web app served by a Node + socket.io backend, run as a kiosk on a Raspberry Pi 4 with a Dell P2418HT 24" touchscreen. Superseded by the web kiosk version above; kept for reference.
 
 Recommended hardware:
 

@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking} from 'react-native';
+import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking, Platform} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../../store';
 import {translate} from '../../utils/translations';
@@ -32,7 +32,12 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const handleSpotifyConnect = async () => {
     try {
       const url = await startSpotifyOAuth();
-      await Linking.openURL(url);
+      if (Platform.OS === 'web') {
+        // Same-tab navigation so the OAuth redirect returns into the app
+        window.location.assign(url);
+      } else {
+        await Linking.openURL(url);
+      }
     } catch (err) {
       Alert.alert('Spotify', err.message || 'Could not start Spotify login');
     }

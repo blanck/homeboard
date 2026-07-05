@@ -2,6 +2,7 @@
 // Each user logs in once to their own Spotify account; tokens are stored in EncryptedStorage
 // and refreshed on demand. The dev/owner registers ONE Spotify app (one-time).
 
+import {Platform} from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import 'react-native-get-random-values';
 import {fetchWithTimeout} from '../utils/fetchSafe';
@@ -10,7 +11,14 @@ import {fetchWithTimeout} from '../utils/fetchSafe';
 // PKCE flow does not need a Client Secret, so this is safe to commit.
 export const CLIENT_ID = '173224127e484c0f955e01857f83ed12';
 
-const REDIRECT_URI = 'homeboard://oauth/spotify';
+// On web, Spotify only accepts https redirect URIs. A static forwarder page
+// on Firebase Hosting (www/oauth/spotify/index.html) bounces the callback
+// with its query back to http://127.0.0.1:8080. Register this exact URI in
+// the Spotify app dashboard.
+const REDIRECT_URI =
+  Platform.OS === 'web'
+    ? 'https://homeboard-1.web.app/oauth/spotify'
+    : 'homeboard://oauth/spotify';
 // No scopes are required for catalog search. Add any extra scopes here later if needed.
 const SCOPES = '';
 const AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';

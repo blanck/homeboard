@@ -1,0 +1,32 @@
+{
+  "name": "homeboard-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "node server.mjs",
+    "start": "npm run build && node server.mjs"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "dayjs": "^1.11.19",
+    "lottie-web": "^5.13.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native-svg": "15.15.3",
+    "react-native-vector-icons": "^10.3.0",
+    "react-native-web": "^0.21.1",
+    "ws": "^8.18.0",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.0",
+    "vite": "^6.3.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

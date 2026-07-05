@@ -22,6 +22,9 @@ const SonosWidget = () => {
   const failuresRef = useRef(0);
   const rediscoveringRef = useRef(false);
   const persistedUuidRef = useRef(null);
+  // When the configured speaker is grouped, playback lives on the group
+  // coordinator; volume stays on the configured device
+  const coordinatorIpRef = useRef(null);
   const updateConfig = useStore((s) => s.updateConfig);
   const sonosIp = config.sonos?.ip;
   const sonosName = config.sonos?.name;
@@ -68,20 +71,34 @@ const SonosWidget = () => {
     if (!sonosIp) {
       return;
     }
+    coordinatorIpRef.current = null;
 
     const poll = async () => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
       try {
-        const [track, state, volume, playMode] = await Promise.all([
-          sonosService.getCurrentTrack(sonosIp),
-          sonosService.getTransportState(sonosIp),
+        const controlIp = coordinatorIpRef.current || sonosIp;
+        let [track, state, volume, playMode] = await Promise.all([
+          sonosService.getCurrentTrack(controlIp),
+          sonosService.getTransportState(controlIp),
           sonosService.getVolume(sonosIp),
-          sonosService.getPlayMode(sonosIp),
+          sonosService.getPlayMode(controlIp),
         ]);
+        if (track?.grouped) {
+          const cIp = await sonosService.getCoordinatorIp(sonosIp);
+          if (cIp && cIp !== controlIp) {
+            coordinatorIpRef.current = cIp;
+            [track, state, playMode] = await Promise.all([
+              sonosService.getCurrentTrack(cIp),
+              sonosService.getTransportState(cIp),
+              sonosService.getPlayMode(cIp),
+            ]);
+          }
+        }
         const allFailed = !track && !state && volume == null && !playMode;
         if (allFailed) {
           failuresRef.current += 1;
+          coordinatorIpRef.current = null;
           if (failuresRef.current >= 3) {
             rediscover().catch((e) => console.warn('[poll rediscover]', e?.message || String(e)));
           }
@@ -89,7 +106,7 @@ const SonosWidget = () => {
         }
         const wasFailing = failuresRef.current > 0;
         failuresRef.current = 0;
-        if (track) setSonosTrack(track);
+        if (track && !track.grouped) setSonosTrack(track);
         if (state) setSonosState(state);
         if (volume != null) setSonosVolume(volume);
         if (playMode) setSonosShuffle(playMode.includes('SHUFFLE'));
@@ -124,13 +141,13 @@ const SonosWidget = () => {
 
   const playPause = useCallback(() => {
     if (sonosIp) {
-      sonosService.togglePlayback(sonosIp);
+      sonosService.togglePlayback(coordinatorIpRef.current || sonosIp);
     }
   }, [sonosIp]);
 
   const playNext = useCallback(() => {
     if (sonosIp) {
-      sonosService.nextTrack(sonosIp);
+      sonosService.nextTrack(coordinatorIpRef.current || sonosIp);
     }
   }, [sonosIp]);
 
@@ -140,7 +157,7 @@ const SonosWidget = () => {
     const newMode = previous ? 'NORMAL' : 'SHUFFLE';
     setSonosShuffle(!previous);
     try {
-      await sonosService.setPlayMode(sonosIp, newMode);
+      await sonosService.setPlayMode(coordinatorIpRef.current || sonosIp, newMode);
     } catch {
       setSonosShuffle(previous);
     }
@@ -276,7 +293,7 @@ const styles = StyleSheet.create({
   row: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',

@@ -15,31 +15,20 @@ import Svg, {Defs, LinearGradient as SvgLinearGradient, Rect, Stop} from 'react-
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import {formatArticleContent} from '../utils/formatting';
-import {fs} from '../utils/scale';
+import {fs, sp} from '../utils/scale';
 
-const TopGradient = () => (
-  <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none">
+const PANEL_BG = '#16162a';
+
+// Blends the bottom edge of the image into the text panel
+const ImageFade = () => (
+  <Svg width="100%" height="100%" style={styles.imageFade} preserveAspectRatio="none">
     <Defs>
-      <SvgLinearGradient id="newsTop" x1="0" y1="0" x2="0" y2="1">
-        <Stop offset="0" stopColor="#000" stopOpacity="0.95" />
-        <Stop offset="0.55" stopColor="#000" stopOpacity="0.45" />
-        <Stop offset="1" stopColor="#000" stopOpacity="0" />
+      <SvgLinearGradient id="newsFade" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor={PANEL_BG} stopOpacity="0" />
+        <Stop offset="1" stopColor={PANEL_BG} stopOpacity="1" />
       </SvgLinearGradient>
     </Defs>
-    <Rect width="100%" height="100%" fill="url(#newsTop)" />
-  </Svg>
-);
-
-const BottomGradient = () => (
-  <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none">
-    <Defs>
-      <SvgLinearGradient id="newsBot" x1="0" y1="0" x2="0" y2="1">
-        <Stop offset="0" stopColor="#000" stopOpacity="0" />
-        <Stop offset="0.35" stopColor="#000" stopOpacity="0.65" />
-        <Stop offset="1" stopColor="#000" stopOpacity="0.97" />
-      </SvgLinearGradient>
-    </Defs>
-    <Rect width="100%" height="100%" fill="url(#newsBot)" />
+    <Rect width="100%" height="100%" fill="url(#newsFade)" />
   </Svg>
 );
 
@@ -80,31 +69,24 @@ const NewsPopup = () => {
         <Animated.View style={[styles.popup, {transform: [{scale}]}]}>
           <Pressable style={styles.popupInner} onPress={() => {}}>
             {hasImage ? (
-              <ImageBackground
-                source={{uri: article.urlToImage}}
-                style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-              />
+              // Wrapper owns the height: ImageBackground copies width/height
+              // from its own style onto the inner image, which double-applies
+              // percentages (40% of 40%)
+              <View style={styles.imageArea}>
+                <ImageBackground
+                  source={{uri: article.urlToImage}}
+                  style={styles.imageFill}
+                  resizeMode="cover">
+                  <ImageFade />
+                </ImageBackground>
+              </View>
             ) : null}
 
-            <View style={styles.topArea} pointerEvents="box-none">
-              {hasImage ? <TopGradient /> : null}
-              <View style={styles.header}>
-                <Text style={styles.headerTitle} numberOfLines={3}>
-                  {article.title}
-                </Text>
-                <TouchableOpacity onPress={hideArticle} hitSlop={10}>
-                  <Icon name="close" size={26} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.bottomArea}>
-              {hasImage ? <BottomGradient /> : null}
+            <View style={styles.textArea}>
               <ScrollView
-                style={styles.bottomScroll}
-                contentContainerStyle={styles.bottomContent}
+                contentContainerStyle={styles.textContent}
                 showsVerticalScrollIndicator={false}>
+                <Text style={styles.headerTitle}>{article.title}</Text>
                 {article.description ? (
                   <Text style={styles.ingress}>
                     {formatArticleContent(article.description)}
@@ -124,6 +106,10 @@ const NewsPopup = () => {
                 </TouchableOpacity>
               </ScrollView>
             </View>
+
+            <TouchableOpacity style={styles.closeBtn} onPress={hideArticle} hitSlop={10}>
+              <Icon name="close" size={24} color="#fff" />
+            </TouchableOpacity>
           </Pressable>
         </Animated.View>
       </Pressable>
@@ -140,8 +126,8 @@ const styles = StyleSheet.create({
   },
   popup: {
     width: '75%',
-    height: '85%',
-    backgroundColor: '#1a1a2e',
+    maxHeight: '85%',
+    backgroundColor: PANEL_BG,
     borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -150,62 +136,57 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 24,
   },
+  // The popup hugs its content up to maxHeight, so short articles get a
+  // compact card instead of a mostly empty panel
   popupInner: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  imageArea: {
+    height: sp(230),
+    width: '100%',
+    flexShrink: 0,
+  },
+  imageFill: {
     flex: 1,
   },
-  topArea: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 8,
-    paddingBottom: 40,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    gap: 12,
-  },
-  headerTitle: {
-    color: '#ffffff',
-    fontSize: fs(20),
-    fontWeight: 'bold',
-    flex: 1,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowRadius: 6,
-  },
-  bottomArea: {
+  imageFade: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    maxHeight: '70%',
+    height: 56,
   },
-  bottomScroll: {
-    paddingTop: 60,
+  textArea: {
+    flexShrink: 1,
+    minHeight: 0,
+    backgroundColor: PANEL_BG,
   },
-  bottomContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 20,
+  textContent: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  headerTitle: {
+    color: '#ffffff',
+    fontSize: fs(22),
+    fontWeight: 'bold',
+    lineHeight: fs(28),
+    marginBottom: 12,
+    paddingRight: 24,
   },
   ingress: {
     color: '#ffffff',
     fontSize: fs(16),
     fontStyle: 'italic',
-    lineHeight: fs(22),
+    lineHeight: fs(23),
     marginBottom: 12,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowRadius: 4,
   },
   body: {
-    color: '#dddddd',
+    color: '#cccccc',
     fontSize: fs(15),
-    lineHeight: fs(22),
+    lineHeight: fs(23),
     marginBottom: 14,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowRadius: 4,
   },
   linkWrap: {
     paddingTop: 4,
@@ -215,6 +196,17 @@ const styles = StyleSheet.create({
     color: '#7eb8e6',
     fontSize: fs(14),
     fontWeight: '600',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

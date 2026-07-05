@@ -82,7 +82,8 @@ const ShareTab = ({form, updateField, lang, Section}) => {
       }
       let name = await AsyncStorage.getItem(DEVICE_NAME_KEY);
       if (!name) {
-        const platformLabel = Platform.OS === 'ios' ? 'iOS' : 'Android';
+        const platformLabel =
+          Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'web' ? 'Homeboard' : 'Android';
         name = `${platformLabel} ${id}`;
         await AsyncStorage.setItem(DEVICE_NAME_KEY, name);
       }

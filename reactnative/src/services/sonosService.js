@@ -219,11 +219,15 @@ export const getCurrentTrack = async (ip) => {
     const metadata = decodeXmlEntities(extractTag(result, 'TrackMetaData'));
     const duration = parseDuration(extractTag(result, 'TrackDuration'));
     const position = parseDuration(extractTag(result, 'RelTime'));
+    const trackUri = extractTag(result, 'TrackURI') || '';
 
-    const title =
-      extractTag(metadata, 'dc:title') || extractTag(metadata, 'r:streamContent') || '';
-    const artist = extractTag(metadata, 'dc:creator') || '';
-    const album = extractTag(metadata, 'upnp:album') || '';
+    // DIDL fields are entity-encoded inside the already-decoded metadata,
+    // so each field needs its own decode pass
+    const title = decodeXmlEntities(
+      extractTag(metadata, 'dc:title') || extractTag(metadata, 'r:streamContent') || '',
+    );
+    const artist = decodeXmlEntities(extractTag(metadata, 'dc:creator') || '');
+    const album = decodeXmlEntities(extractTag(metadata, 'upnp:album') || '');
     let albumArtURI = extractTag(metadata, 'upnp:albumArtURI') || '';
     albumArtURI = decodeXmlEntities(albumArtURI);
 
@@ -240,6 +244,9 @@ export const getCurrentTrack = async (ip) => {
       albumArtURL: albumArtURI,
       duration,
       position,
+      // Group members expose x-rincon:<coordinatorUuid> and no metadata;
+      // the caller should re-query the group coordinator instead
+      grouped: !title && trackUri.startsWith('x-rincon:'),
     };
   } catch (err) {
     console.warn('Sonos track error:', err);

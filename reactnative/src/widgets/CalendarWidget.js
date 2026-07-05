@@ -13,7 +13,7 @@ const CalendarWidget = () => {
   const lang = config.language || 'en';
 
   return (
-    <WidgetCard variant="light">
+    <WidgetCard variant="light" style={styles.card}>
       <Text style={styles.title}>{translate('calendar', lang)}</Text>
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         {events
@@ -30,7 +30,7 @@ const CalendarWidget = () => {
                       borderLeftColor: colors.border,
                     },
                   ]}>
-                  <Text style={styles.time}>
+                  <Text style={styles.time} numberOfLines={1}>
                     {formatCalendarTime(event.start, lang)}
                   </Text>
                   <Text style={styles.event} numberOfLines={1}>
@@ -46,6 +46,9 @@ const CalendarWidget = () => {
 };
 
 const styles = StyleSheet.create({
+  card: {
+    padding: 14,
+  },
   title: {
     fontSize: fs(12),
     fontWeight: '500',
@@ -68,7 +71,8 @@ const styles = StyleSheet.create({
     fontSize: fs(13),
     fontWeight: '400',
     color: '#333333',
-    width: '30%',
+    minWidth: '30%',
+    flexShrink: 0,
     marginRight: 8,
   },
   event: {

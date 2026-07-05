@@ -336,6 +336,38 @@ const applyExclusion = (articles, exclude) => {
   });
 };
 
+// newsapi.org top-headlines, matching what the legacy server.js used
+const fetchFromNewsApiOrg = async (config) => {
+  const {keys, headlines} = config.newsapi || {};
+  const key = keys?.newsapiorg || config.newsapi?.key;
+  if (!key) {
+    console.warn('News: NewsAPI.org key not set');
+    return null;
+  }
+
+  const params = new URLSearchParams({apiKey: key, pageSize: String(headlines?.pageSize || 30)});
+  const sources = (headlines?.sources || '').trim();
+  if (sources) {
+    params.set('sources', sources);
+  } else if (headlines?.language) {
+    params.set('language', headlines.language);
+  }
+
+  const data = await fetchJsonSafe(`https://newsapi.org/v2/top-headlines?${params}`);
+  if (!data || data.status !== 'ok' || !Array.isArray(data.articles)) {
+    console.warn('News: NewsAPI.org error', data?.status, data?.message);
+    return null;
+  }
+  return data.articles.map((a) => ({
+    title: a.title,
+    description: a.description,
+    url: a.url,
+    urlToImage: a.urlToImage,
+    publishedAt: a.publishedAt,
+    source: {name: a.source?.name || '', icon: null},
+  }));
+};
+
 export const fetchNews = async (config) => {
   const provider = config.newsapi?.provider || 'newsdata';
   console.warn('News: fetching from', provider);
@@ -344,6 +376,8 @@ export const fetchNews = async (config) => {
     articles = await fetchFromTheNewsApi(config);
   } else if (provider === 'currents') {
     articles = await fetchFromCurrents(config);
+  } else if (provider === 'newsapiorg') {
+    articles = await fetchFromNewsApiOrg(config);
   } else {
     articles = await fetchFromNewsdata(config);
   }

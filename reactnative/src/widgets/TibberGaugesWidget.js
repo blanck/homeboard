@@ -1,17 +1,24 @@
-import React from 'react';
+import React, {useState, useCallback} from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import useStore from '../store';
 import GaugeCircle from '../components/GaugeCircle';
 import {energyColor, solarColor} from '../utils/colors';
 import {formatEnergyPrice, formatEnergyDate} from '../utils/formatting';
 import {translate} from '../utils/translations';
-import {fs} from '../utils/scale';
+import {fs, sp} from '../utils/scale';
 
 const TibberGaugesWidget = () => {
   const tibber = useStore((s) => s.tibber);
   const tibber2 = useStore((s) => s.tibber2);
   const config = useStore((s) => s.config);
   const lang = config.language || 'en';
+
+  // Size the gauge to the tile: label (~26) + GaugeCircle's own +20 overhead
+  const [gaugeSize, setGaugeSize] = useState(0);
+  const onCardLayout = useCallback((e) => {
+    const {height} = e.nativeEvent.layout;
+    setGaugeSize(Math.max(70, Math.round((height - sp(24)) * 0.9)));
+  }, []);
 
   const priceInfo =
     tibber && tibber.currentSubscription
@@ -23,16 +30,18 @@ const TibberGaugesWidget = () => {
     <>
       {/* Price Gauge */}
       {current && config.showEnergyPrice !== false ? (
-        <View style={styles.card}>
+        <View style={styles.card} onLayout={onCardLayout}>
           <Text style={styles.label}>{translate('price', lang)}</Text>
-          <GaugeCircle
-            value={Math.min(current.total, 1)}
-            valueText={formatEnergyPrice(current.total)}
-            valueTextColor={energyColor(current.level)}
-            borderColor={energyColor(current.level)}
-            size={120}
-            subText={formatEnergyDate(current.startsAt)}
-          />
+          {gaugeSize > 0 ? (
+            <GaugeCircle
+              value={Math.min(current.total, 1)}
+              valueText={formatEnergyPrice(current.total)}
+              valueTextColor={energyColor(current.level)}
+              borderColor={energyColor(current.level)}
+              size={gaugeSize}
+              subText={formatEnergyDate(current.startsAt)}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -45,7 +54,7 @@ const TibberGaugesWidget = () => {
             valueText={tibber2.inverter.bubble.value + ' W'}
             valueTextColor={solarColor(tibber2.inverter.bubble.percent)}
             borderColor={solarColor(tibber2.inverter.bubble.percent)}
-            size={120}
+            size={gaugeSize > 0 ? gaugeSize : sp(120)}
             labelText={
               tibber2.inverterProduction
                 ? parseFloat(
@@ -66,17 +75,15 @@ const TibberGaugesWidget = () => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 8,
-    padding: 8,
+    paddingHorizontal: 2,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   label: {
     color: '#ffffff',
-    fontSize: fs(12),
+    fontSize: fs(11),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 8,
     textTransform: 'uppercase',
   },
 });

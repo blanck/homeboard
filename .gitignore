@@ -41,3 +41,5 @@ www/
 build/webpack.config.js
 config.js
 test.js
+web/dist/
+.firebase/
