@@ -1,7 +1,11 @@
 // QR code section encoding/decoding for settings transfer
 // Format: HB:<section>:<pipe-delimited values>
+//
+// `secrets` optionally carries OAuth token stores (spotifyTokens,
+// tibberDataTokens, lmAuth) so LAN sync can move logins between trusted
+// devices. Older receivers ignore the extra fields.
 
-export const buildSectionData = (key, form) => {
+export const buildSectionData = (key, form, secrets = {}) => {
   switch (key) {
     case 'general':
       return [
@@ -32,6 +36,7 @@ export const buildSectionData = (key, form) => {
       return [
         form.tibberApiKey,
         form.tibberHomeId,
+        secrets.tibberDataTokens || '',
       ].join('|');
     case 'news':
       return JSON.stringify({
@@ -56,6 +61,7 @@ export const buildSectionData = (key, form) => {
         sonosGroup: form.sonosGroup,
         sonosRegion: form.sonosRegion,
         quickPicks: form.quickPicks || [],
+        spotifyTokens: secrets.spotifyTokens || '',
       });
     case 'smartDevices':
       return JSON.stringify({
@@ -63,6 +69,7 @@ export const buildSectionData = (key, form) => {
         lmSerialNumber: form.lmSerialNumber || '',
         lmMachineName: form.lmMachineName || '',
         lmShowWidget: form.lmShowWidget !== false ? '1' : '0',
+        lmAuth: secrets.lmAuth || '',
       });
     default:
       return '';
@@ -101,6 +108,7 @@ export const parseSectionData = (key, data) => {
       return {
         tibberApiKey: p[0] || '',
         tibberHomeId: p[1] || '',
+        __tibberDataTokens: p[2] || '',
       };
     case 'news': {
       try {
@@ -141,6 +149,7 @@ export const parseSectionData = (key, data) => {
           sonosGroup: m.sonosGroup || '',
           sonosRegion: m.sonosRegion || '2311',
           quickPicks: m.quickPicks || [],
+          __spotifyTokens: m.spotifyTokens || '',
         };
       } catch (e) {
         return {
@@ -159,6 +168,7 @@ export const parseSectionData = (key, data) => {
           lmSerialNumber: m.lmSerialNumber || '',
           lmMachineName: m.lmMachineName || '',
           lmShowWidget: m.lmShowWidget !== '0',
+          __lmAuth: m.lmAuth || '',
         };
       } catch (e) {
         return {};

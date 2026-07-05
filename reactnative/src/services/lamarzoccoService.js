@@ -139,6 +139,26 @@ async function loadTokens() {
   }
 }
 
+// For LAN settings sync: move the auth (install key + tokens) between
+// trusted devices so each kiosk does not need its own login.
+export async function exportAuth() {
+  const [installKey, tokens] = await Promise.all([
+    EncryptedStorage.getItem(INSTALL_KEY),
+    EncryptedStorage.getItem(TOKEN_KEY),
+  ]);
+  if (!installKey || !tokens) return null;
+  return JSON.stringify({installKey, tokens});
+}
+
+export async function importAuth(str) {
+  const parsed = JSON.parse(str);
+  if (!parsed || !parsed.installKey || !parsed.tokens) {
+    throw new Error('Invalid auth payload');
+  }
+  await EncryptedStorage.setItem(INSTALL_KEY, parsed.installKey);
+  await EncryptedStorage.setItem(TOKEN_KEY, parsed.tokens);
+}
+
 // --- Request Signing ---
 
 // Convert raw r||s (64 bytes) to DER-encoded ECDSA signature

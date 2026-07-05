@@ -193,6 +193,18 @@ export const clearTokens = async () => {
   await EncryptedStorage.removeItem(TOKENS_KEY);
 };
 
+// For LAN settings sync: move the token store between trusted devices so
+// each kiosk does not need its own interactive login.
+export const exportTokens = async () => {
+  return await EncryptedStorage.getItem(TOKENS_KEY);
+};
+
+export const importTokens = async (str) => {
+  const parsed = JSON.parse(str);
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid token payload');
+  await EncryptedStorage.setItem(TOKENS_KEY, str);
+};
+
 // Refresh mutex to prevent concurrent refreshes
 let refreshPromise = null;
 

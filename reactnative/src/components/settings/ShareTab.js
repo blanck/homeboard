@@ -21,6 +21,34 @@ import {
   buildSend,
   parseMessage,
 } from '../../utils/lanSync';
+import useStore from '../../store';
+import {
+  exportTokens as exportSpotifyTokens,
+  importTokens as importSpotifyTokens,
+} from '../../services/spotifyOAuthService';
+import {
+  exportTokens as exportTibberTokens,
+  importTokens as importTibberTokens,
+} from '../../services/tibberOAuthService';
+import {exportAuth as exportLmAuth, importAuth as importLmAuth} from '../../services/lamarzoccoService';
+
+// OAuth token stores travel with their section so the receiving device
+// does not need its own interactive login (trusted-LAN tradeoff, same as
+// the API keys already carried in these payloads).
+const gatherSectionSecrets = async (section) => {
+  try {
+    if (section === 'music') {
+      return {spotifyTokens: (await exportSpotifyTokens()) || ''};
+    }
+    if (section === 'energy') {
+      return {tibberDataTokens: (await exportTibberTokens()) || ''};
+    }
+    if (section === 'smartDevices') {
+      return {lmAuth: (await exportLmAuth()) || ''};
+    }
+  } catch (e) {}
+  return {};
+};
 
 const SECTIONS = [
   {key: 'general', icon: 'cog'},
@@ -49,6 +77,8 @@ const randomHex = (n) => {
 };
 
 const ShareTab = ({form, updateField, lang, Section}) => {
+  const setSpotifyConnected = useStore((s) => s.setSpotifyConnected);
+  const setTibberDataApiConnected = useStore((s) => s.setTibberDataApiConnected);
   const [deviceId, setDeviceId] = useState(null);
   const [deviceName, setDeviceName] = useState('');
   const [selectedSection, setSelectedSection] = useState(null);
@@ -185,13 +215,14 @@ const ShareTab = ({form, updateField, lang, Section}) => {
     } catch (e) {}
   };
 
-  const handleSendToDevice = (device) => {
+  const handleSendToDevice = async (device) => {
     if (!selectedSection) {
       Alert.alert(translate('selectSectionFirst', lang));
       return;
     }
     const reqId = newRequestId();
-    const data = buildSectionData(selectedSection, form);
+    const secrets = await gatherSectionSecrets(selectedSection);
+    const data = buildSectionData(selectedSection, form, secrets);
     sendRaw(buildSend(reqId, deviceNameRef.current, selectedSection, data), device.addr);
     setSending(selectedSection);
     setTimeout(() => setSending(null), 2000);
@@ -206,8 +237,24 @@ const ShareTab = ({form, updateField, lang, Section}) => {
     const wire = `HB:${payload.section}:${payload.data}`;
     const result = parseQrValue(wire);
     if (result) {
-      for (const [k, v] of Object.entries(result.fields)) {
+      const {__spotifyTokens, __tibberDataTokens, __lmAuth, ...fields} = result.fields;
+      for (const [k, v] of Object.entries(fields)) {
         updateField(k, v);
+      }
+      if (__spotifyTokens) {
+        importSpotifyTokens(__spotifyTokens)
+          .then(() => setSpotifyConnected(true))
+          .catch((e) => console.warn('Spotify token import failed:', e.message));
+      }
+      if (__tibberDataTokens) {
+        importTibberTokens(__tibberDataTokens)
+          .then(() => setTibberDataApiConnected(true))
+          .catch((e) => console.warn('Tibber token import failed:', e.message));
+      }
+      if (__lmAuth) {
+        importLmAuth(__lmAuth).catch((e) =>
+          console.warn('La Marzocco auth import failed:', e.message),
+        );
       }
       setReceived(result.section);
       setTimeout(() => setReceived(null), 4000);
