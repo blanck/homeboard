@@ -15,7 +15,7 @@ const formatPower = (w) => {
   return Math.round(abs) + ' W';
 };
 
-const HomevoltWidget = () => {
+const HomevoltWidget = ({compact = false}) => {
   const tibber2 = useStore((s) => s.tibber2);
 
   if (!tibber2 || !tibber2.battery) {
@@ -59,10 +59,10 @@ const HomevoltWidget = () => {
           {battery.batteryPower > 0 ? '▼ ' : '▲ '}{formatPower(battery.batteryPower)}
         </Text>
       ) : null}
-      {charged && charged.energy > 0 ? (
+      {!compact && charged && charged.energy > 0 ? (
         <Text style={styles.stat}>▼ {formatEnergy(charged.energy)}</Text>
       ) : null}
-      {discharged && discharged.energy > 0 ? (
+      {!compact && discharged && discharged.energy > 0 ? (
         <Text style={styles.stat}>▲ {formatEnergy(discharged.energy)}</Text>
       ) : null}
       {!battery.isAlive ? (

@@ -305,19 +305,33 @@ const Dashboard = () => {
                     <ConsumptionWidget />
                   </View>
                 ) : null}
-                {tibber2 && tibber2.battery ? (
+                {tibber2 && tibber2.battery && tibber2.electricVehicles && tibber2.electricVehicles.length > 0 ? (
+                  // Battery + EV share one tile as stacked half-size widgets
                   <View style={styles.homeCard}>
-                    <HomevoltWidget />
+                    <View style={styles.stackHalf}>
+                      <HomevoltWidget compact />
+                    </View>
+                    <View style={styles.stackHalf}>
+                      <EVBatteryWidget compact />
+                    </View>
                   </View>
-                ) : null}
+                ) : (
+                  <>
+                    {tibber2 && tibber2.battery ? (
+                      <View style={styles.homeCard}>
+                        <HomevoltWidget />
+                      </View>
+                    ) : null}
+                    {tibber2 && tibber2.electricVehicles && tibber2.electricVehicles.length > 0 ? (
+                      <View style={styles.homeCard}>
+                        <EVBatteryWidget />
+                      </View>
+                    ) : null}
+                  </>
+                )}
                 {tibber2 && tibber2.thermostat ? (
                   <View style={styles.homeCard}>
                     <ThermostatWidget />
-                  </View>
-                ) : null}
-                {tibber2 && tibber2.electricVehicles && tibber2.electricVehicles.length > 0 ? (
-                  <View style={styles.homeCard}>
-                    <EVBatteryWidget />
                   </View>
                 ) : null}
                 {hasLaMarzocco ? (
@@ -418,6 +432,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'flex-start',
+  },
+  stackHalf: {
+    flex: 1,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   settingsCog: {
     position: 'absolute',

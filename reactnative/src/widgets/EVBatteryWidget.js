@@ -3,7 +3,7 @@ import {View, Text, StyleSheet, Image} from 'react-native';
 import useStore from '../store';
 import {fs} from '../utils/scale';
 
-const EVBatteryWidget = () => {
+const EVBatteryWidget = ({compact = false}) => {
   const tibber2 = useStore((s) => s.tibber2);
 
   if (
@@ -18,7 +18,7 @@ const EVBatteryWidget = () => {
     <View style={styles.container}>
       {tibber2.electricVehicles.map((vehicle, idx) => (
         <View key={idx} style={[styles.vehicle, !vehicle.isAlive && styles.offline]}>
-          {vehicle.imgUrl ? (
+          {!compact && vehicle.imgUrl ? (
             <Image
               source={{uri: vehicle.imgUrl}}
               style={styles.image}
