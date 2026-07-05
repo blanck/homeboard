@@ -60,9 +60,9 @@ const styles = StyleSheet.create({
     marginTop: -8,
   },
   remote: {
-    fontSize: fs(32),
-    fontWeight: 'bold',
-    color: '#ffffff',
+    fontSize: fs(20),
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.85)',
     marginTop: 8,
   },
 });
