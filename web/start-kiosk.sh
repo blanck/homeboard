@@ -12,6 +12,8 @@ unclutter -idle 0 &
 xset -display :0.0 dpms force on; xset -display :0.0 -dpms
 
 sleep 8
+# GPU flags: chromium 92 blocklists compositing on the Pi otherwise
 chromium-browser --kiosk --start-fullscreen --noerrdialogs \
   --disable-session-crashed-bubble --disable-infobars --check-for-update-interval=604800 \
+  --use-gl=egl --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy \
   --app=http://localhost:8080 &

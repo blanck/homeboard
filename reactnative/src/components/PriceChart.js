@@ -114,7 +114,7 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
           d={pathD}
           fill="none"
           stroke="url(#lineGrad)"
-          strokeWidth={3}
+          strokeWidth={6}
         />
 
         {/* X-axis labels */}

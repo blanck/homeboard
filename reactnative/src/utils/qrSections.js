@@ -33,11 +33,21 @@ export const buildSectionData = (key, form, secrets = {}) => {
         form.netatmoForecastBearer,
       ].join('|');
     case 'energy':
-      return [
-        form.tibberApiKey,
-        form.tibberHomeId,
-        secrets.tibberDataTokens || '',
-      ].join('|');
+      return JSON.stringify({
+        tibberApiKey: form.tibberApiKey || '',
+        tibberHomeId: form.tibberHomeId || '',
+        energyProvider: form.energyProvider || 'disabled',
+        showEnergyPrice: form.showEnergyPrice !== false ? '1' : '0',
+        showEnergyChart: form.showEnergyChart !== false ? '1' : '0',
+        tibberThermostat: form.tibberThermostat || '',
+        tibberInverter: form.tibberInverter || '',
+        tibberProduction: form.tibberProduction || '',
+        tibberPulse: form.tibberPulse || '',
+        tibberHomevolt: form.tibberHomevolt || '',
+        tibberEv: form.tibberEv ? '1' : '0',
+        tibberEvDeviceIds: form.tibberEvDeviceIds || [],
+        tibberDataTokens: secrets.tibberDataTokens || '',
+      });
     case 'news':
       return JSON.stringify({
         newsProvider: form.newsProvider || 'newsdata',
@@ -104,12 +114,32 @@ export const parseSectionData = (key, data) => {
         netatmoForecastModuleId: p[7] || '',
         netatmoForecastBearer: p[8] || '',
       };
-    case 'energy':
-      return {
-        tibberApiKey: p[0] || '',
-        tibberHomeId: p[1] || '',
-        __tibberDataTokens: p[2] || '',
-      };
+    case 'energy': {
+      try {
+        const m = JSON.parse(data);
+        return {
+          tibberApiKey: m.tibberApiKey || '',
+          tibberHomeId: m.tibberHomeId || '',
+          energyProvider: m.energyProvider || 'disabled',
+          showEnergyPrice: m.showEnergyPrice !== '0',
+          showEnergyChart: m.showEnergyChart !== '0',
+          tibberThermostat: m.tibberThermostat || '',
+          tibberInverter: m.tibberInverter || '',
+          tibberProduction: m.tibberProduction || '',
+          tibberPulse: m.tibberPulse || '',
+          tibberHomevolt: m.tibberHomevolt || '',
+          tibberEv: m.tibberEv === '1',
+          tibberEvDeviceIds: m.tibberEvDeviceIds || [],
+          __tibberDataTokens: m.tibberDataTokens || '',
+        };
+      } catch (e) {
+        return {
+          tibberApiKey: p[0] || '',
+          tibberHomeId: p[1] || '',
+          __tibberDataTokens: p[2] || '',
+        };
+      }
+    }
     case 'news': {
       try {
         const m = JSON.parse(data);
