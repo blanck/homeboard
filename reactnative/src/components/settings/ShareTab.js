@@ -94,6 +94,8 @@ const ShareTab = ({form, updateField, lang, Section}) => {
   const incomingPayloadRef = useRef(null);
   const deviceNameRef = useRef('');
   const deviceIdRef = useRef('');
+  // Per-device timestamps of our last unicast announce reply
+  const announceRepliesRef = useRef({});
 
   useEffect(() => {
     deviceNameRef.current = deviceName;
@@ -169,6 +171,14 @@ const ShareTab = ({form, updateField, lang, Section}) => {
           ...prev,
           [parsed.id]: {id: parsed.id, name: parsed.name, addr: rinfo.address, lastSeen: Date.now()},
         }));
+        // Reply with a unicast announce so the sender sees us even when
+        // multicast only works one way (e.g. wired-to-wifi gets dropped by
+        // some access points). Rate-limited per device to avoid ping-pong.
+        const lastReply = announceRepliesRef.current[parsed.id] || 0;
+        if (Date.now() - lastReply > ANNOUNCE_INTERVAL - 500 && deviceIdRef.current && deviceNameRef.current) {
+          announceRepliesRef.current[parsed.id] = Date.now();
+          sendRaw(buildAnnounce(deviceIdRef.current, deviceNameRef.current), rinfo.address);
+        }
         return;
       }
 
