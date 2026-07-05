@@ -36,7 +36,9 @@ Forks: deploy your own forwarder pages (`firebase deploy --only hosting`) and ch
 
 ## Install on a Raspberry Pi
 
-Assumes the base system setup from the root readme (Chromium, X11, nvm, pm2). Node 20+ required.
+Assumes the base system setup from the root readme (Chromium, X11, nvm, pm2).
+
+**Node requirements**: the server (`server.mjs`) runs on Node 16+, deliberately, because Raspbian Buster's libstdc++ cannot run Node 18+. Building the bundle (Vite) needs Node 18+, so on a Buster Pi you build on your dev machine and push with `web/deploy-to-pi.sh` (rsyncs `dist/` + `server.mjs`, installs `ws`, swaps the pm2 process, refreshes the kiosk browser). On a Pi with a newer OS you can build on-device instead:
 
 ```sh
 git clone https://github.com/blanck/homeboard.git ~/homeboard
@@ -50,10 +52,10 @@ pm2 save
 Autostart the kiosk on boot (replaces the legacy `start.sh` line):
 
 ```sh
-echo "@sh /home/pi/homeboard/web/start.sh &" | sudo tee -a /etc/xdg/lxsession/LXDE-pi/autostart
+echo "@sh /home/pi/homeboard-web/start-kiosk.sh &" | sudo tee -a /etc/xdg/lxsession/LXDE-pi/autostart
 ```
 
-`web/start.sh` pulls the latest master, rebuilds, restarts the pm2 process, and launches Chromium in kiosk mode at `http://localhost:8080`.
+`start-kiosk.sh` only preps the display and launches Chromium at `http://localhost:8080`; pm2's systemd unit resurrects the server. (`start.sh` is the variant for Pis that can build on-device: it also pulls master and rebuilds on every boot.)
 
 ### Migrating from the legacy web app
 

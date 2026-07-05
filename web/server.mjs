@@ -6,8 +6,12 @@
 //
 // Only clients on private (LAN/loopback) addresses may use the proxy and
 // bridge. Do not port-forward this server to the internet.
+//
+// Uses node:http/https instead of fetch so it runs on Node 16 (the newest
+// that works on Raspbian Buster's libstdc++).
 
 import http from 'node:http';
+import https from 'node:https';
 import dgram from 'node:dgram';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -57,7 +61,6 @@ const STRIP_REQUEST_HEADERS = new Set([
   'referer',
   'connection',
   'upgrade',
-  'accept-encoding',
   'content-length',
   'cookie',
   'sec-fetch-dest',
@@ -68,9 +71,9 @@ const STRIP_REQUEST_HEADERS = new Set([
   'sec-ch-ua-platform',
 ]);
 
+// Bodies are piped through raw (no decompression), so content-encoding and
+// content-length pass straight to the browser.
 const STRIP_RESPONSE_HEADERS = new Set([
-  'content-encoding',
-  'content-length',
   'transfer-encoding',
   'connection',
   'keep-alive',
@@ -78,6 +81,59 @@ const STRIP_RESPONSE_HEADERS = new Set([
   'content-security-policy',
   'strict-transport-security',
 ]);
+
+const forwardRequest = (target, method, headers, body, res, redirectsLeft) => {
+  let targetUrl;
+  try {
+    targetUrl = new URL(target);
+  } catch {
+    res.writeHead(400);
+    res.end('Bad proxy url');
+    return;
+  }
+  const mod = targetUrl.protocol === 'https:' ? https : http;
+
+  const outHeaders = {...headers};
+  if (body) outHeaders['content-length'] = Buffer.byteLength(body);
+
+  const upstream = mod.request(
+    targetUrl,
+    {method, headers: outHeaders, timeout: PROXY_TIMEOUT_MS},
+    (up) => {
+      const status = up.statusCode || 502;
+      const location = up.headers.location;
+      if (
+        location &&
+        [301, 302, 303, 307, 308].includes(status) &&
+        redirectsLeft > 0 &&
+        (method === 'GET' || method === 'HEAD')
+      ) {
+        up.resume();
+        const next = new URL(location, targetUrl).toString();
+        forwardRequest(next, method, headers, body, res, redirectsLeft - 1);
+        return;
+      }
+      const respHeaders = {};
+      for (const [name, value] of Object.entries(up.headers)) {
+        if (!STRIP_RESPONSE_HEADERS.has(name.toLowerCase())) respHeaders[name] = value;
+      }
+      res.writeHead(status, respHeaders);
+      up.pipe(res);
+    },
+  );
+
+  upstream.on('timeout', () => upstream.destroy(new Error('upstream timeout')));
+  upstream.on('error', (err) => {
+    if (!res.headersSent) res.writeHead(502);
+    res.end(`Proxy error: ${err.message}`);
+  });
+
+  if (body) {
+    upstream.end(body);
+  } else {
+    upstream.end();
+  }
+};
 
 const handleProxy = async (req, res, requestUrl) => {
   const target = requestUrl.searchParams.get('url');
@@ -92,37 +148,16 @@ const handleProxy = async (req, res, requestUrl) => {
     if (!STRIP_REQUEST_HEADERS.has(name.toLowerCase())) headers[name] = value;
   }
 
-  const init = {
-    method: req.method,
-    headers,
-    redirect: 'follow',
-    signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
-  };
+  let body = null;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     // Buffer instead of streaming: a streamed body goes out chunked, and
     // embedded HTTP servers (Sonos UPnP) stall on chunked requests.
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    init.body = Buffer.concat(chunks);
+    body = Buffer.concat(chunks);
   }
 
-  try {
-    const upstream = await fetch(target, init);
-    const outHeaders = {};
-    upstream.headers.forEach((value, name) => {
-      if (!STRIP_RESPONSE_HEADERS.has(name.toLowerCase())) outHeaders[name] = value;
-    });
-    res.writeHead(upstream.status, outHeaders);
-    if (upstream.body) {
-      for await (const chunk of upstream.body) {
-        res.write(chunk);
-      }
-    }
-    res.end();
-  } catch (err) {
-    if (!res.headersSent) res.writeHead(502);
-    res.end(`Proxy error: ${err.message}`);
-  }
+  forwardRequest(target, req.method, headers, body, res, 5);
 };
 
 const serveStatic = (req, res, requestUrl) => {
@@ -198,15 +233,25 @@ const discoverSonosIps = (timeoutMs = 2500) =>
     });
   });
 
+const httpGetText = (url, timeoutMs = 3000) =>
+  new Promise((resolve, reject) => {
+    const request = http.get(url, {timeout: timeoutMs}, (up) => {
+      let text = '';
+      up.setEncoding('utf8');
+      up.on('data', (chunk) => (text += chunk));
+      up.on('end', () => resolve(text));
+    });
+    request.on('timeout', () => request.destroy(new Error('timeout')));
+    request.on('error', reject);
+  });
+
 const resolveSonosIp = async (group) => {
   if (!group) return null;
   const ips = await discoverSonosIps();
   for (const ip of ips) {
     try {
-      const resp = await fetch(`http://${ip}:1400/xml/device_description.xml`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      const room = (await resp.text()).match(/<roomName>([^<]*)/)?.[1];
+      const text = await httpGetText(`http://${ip}:1400/xml/device_description.xml`);
+      const room = text.match(/<roomName>([^<]*)/)?.[1];
       if (room && room.toLowerCase() === String(group).toLowerCase()) return ip;
     } catch {}
   }
