@@ -12,6 +12,7 @@ import dgram from 'node:dgram';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {exec} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {WebSocketServer} from 'ws';
@@ -224,8 +225,53 @@ const handleLegacyConfig = async (res) => {
   res.end(JSON.stringify({legacy, sonosIp}));
 };
 
+// --- Kiosk system controls ---------------------------------------------------
+// Ported from the legacy server.js socket handlers (sleep/reboot/restart).
+
+const SYSTEM_COMMANDS = {
+  // Blank the display; a touch wakes it again via DPMS
+  sleep: 'export DISPLAY=:0; xset -display :0.0 s activate; xset -display :0.0 dpms force off',
+  // Raspberry Pi OS default user has passwordless sudo
+  reboot: 'sudo reboot',
+};
+
+const handleSystem = (req, res, action) => {
+  if (req.method !== 'POST') {
+    res.writeHead(405);
+    res.end();
+    return;
+  }
+  if (action === 'restart') {
+    // pm2 restarts the process after a clean exit
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end('{"ok":true}');
+    setTimeout(() => process.exit(0), 300);
+    return;
+  }
+  const cmd = SYSTEM_COMMANDS[action];
+  if (!cmd) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  exec(cmd, (err) => {
+    if (err) console.warn(`system ${action} failed: ${err.message}`);
+  });
+  res.writeHead(200, {'Content-Type': 'application/json'});
+  res.end('{"ok":true}');
+};
+
 const server = http.createServer((req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (requestUrl.pathname.startsWith('/system/')) {
+    if (!isPrivateAddress(req.socket.remoteAddress)) {
+      res.writeHead(403);
+      res.end('LAN only');
+      return;
+    }
+    handleSystem(req, res, requestUrl.pathname.slice('/system/'.length));
+    return;
+  }
   if (requestUrl.pathname === '/proxy' || requestUrl.pathname === '/legacy-config') {
     if (!isPrivateAddress(req.socket.remoteAddress)) {
       res.writeHead(403);

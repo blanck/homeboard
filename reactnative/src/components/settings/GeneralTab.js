@@ -37,6 +37,12 @@ const HOURS = Array.from({length: 24}, (_, i) => ({
   value: String(i),
 }));
 
+// Kiosk-only system controls, backed by /system/* on the web server
+const systemAction = (action, confirmMsg) => {
+  if (confirmMsg && !window.confirm(confirmMsg)) return;
+  fetch(`/system/${action}`, {method: 'POST'}).catch(() => {});
+};
+
 const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
   const [searchQuery, setSearchQuery] = useState(form.locationName || '');
   const [searchResults, setSearchResults] = useState([]);
@@ -240,6 +246,13 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
             onValueChange={(v) => updateSleep('start', v)}
           />
         </View>
+        {Platform.OS === 'web' ? (
+          <TouchableOpacity
+            style={[styles.systemBtn, styles.sleepBtnSpacing]}
+            onPress={() => systemAction('sleep')}>
+            <Text style={styles.systemBtnText}>{translate('sleepScreen', lang)}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <Section title={translate('background', lang)}>
@@ -256,6 +269,31 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
           placeholder={translate('backgroundHint', lang)}
         />
       </Section>
+
+      {Platform.OS === 'web' ? (
+        <Section title={translate('system', lang)}>
+          <View style={styles.systemRow}>
+            <TouchableOpacity
+              style={styles.systemBtn}
+              onPress={() =>
+                systemAction('restart', translate('confirmRestartServer', lang))
+              }>
+              <Text style={styles.systemBtnText}>
+                {translate('restartServer', lang)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.systemBtn, styles.systemBtnDanger]}
+              onPress={() =>
+                systemAction('reboot', translate('confirmReboot', lang))
+              }>
+              <Text style={styles.systemBtnText}>
+                {translate('rebootDevice', lang)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Section>
+      ) : null}
     </View>
   );
 };
@@ -263,6 +301,28 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
 const styles = StyleSheet.create({
   col: {
     flex: 1,
+  },
+  systemRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  systemBtn: {
+    backgroundColor: '#3a3a3a',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  sleepBtnSpacing: {
+    marginLeft: 10,
+  },
+  systemBtnDanger: {
+    backgroundColor: '#5a2a2a',
+  },
+  systemBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   locBtn: {
     backgroundColor: '#1B4781',
