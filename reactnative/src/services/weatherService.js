@@ -73,13 +73,26 @@ export const fetchForecast = async (config) => {
   });
 
   if (data && data.properties && data.properties.timeseries) {
-    // Group by day and pick the noon (12:00) entry for each day
+    // Group by LOCAL day and pick the entry closest to local noon.
+    // met.no timestamps are UTC; grouping by the raw date string splits
+    // days at 00:00 UTC (02:00 local in summer), which made the same
+    // weekday appear twice just after local midnight.
     const series = data.properties.timeseries;
+    const localDay = (iso) => {
+      const dt = new Date(iso);
+      return (
+        dt.getFullYear() +
+        '-' +
+        String(dt.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(dt.getDate()).padStart(2, '0')
+      );
+    };
     const dayMap = {};
     for (const entry of series) {
-      const date = entry.time.substring(0, 10);
-      const hour = parseInt(entry.time.substring(11, 13), 10);
-      if (!dayMap[date] || Math.abs(hour - 12) < Math.abs(parseInt(dayMap[date].time.substring(11, 13), 10) - 12)) {
+      const date = localDay(entry.time);
+      const hour = new Date(entry.time).getHours();
+      if (!dayMap[date] || Math.abs(hour - 12) < Math.abs(new Date(dayMap[date].time).getHours() - 12)) {
         dayMap[date] = entry;
       }
     }

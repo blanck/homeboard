@@ -71,14 +71,16 @@ const styles = StyleSheet.create({
     fontSize: fs(13),
     fontWeight: '400',
     color: '#333333',
-    minWidth: '30%',
+    lineHeight: fs(20),
+    minWidth: '32%',
     flexShrink: 0,
-    marginRight: 8,
+    marginRight: 14,
   },
   event: {
     fontSize: fs(15),
     fontWeight: 'bold',
     color: '#333333',
+    lineHeight: fs(20),
     flex: 1,
   },
 });
