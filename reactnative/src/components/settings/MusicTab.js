@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert, Linking, Platform} from 'react-native';
+import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../../store';
 import {translate} from '../../utils/translations';
@@ -7,6 +7,7 @@ import SonosScanner from './SonosScanner';
 import DropdownPicker from './DropdownPicker';
 import {getZoneGroups, getCoordinatorIp, getSonosFavorites, getSonosPlaylists, getMediaInfo} from '../../services/sonosService';
 import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID} from '../../services/spotifyOAuthService';
+import {openOAuthUrl} from '../../utils/oauthPopup';
 
 const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const [groupOptions, setGroupOptions] = useState([]);
@@ -32,12 +33,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const handleSpotifyConnect = async () => {
     try {
       const url = await startSpotifyOAuth();
-      if (Platform.OS === 'web') {
-        // Same-tab navigation so the OAuth redirect returns into the app
-        window.location.assign(url);
-      } else {
-        await Linking.openURL(url);
-      }
+      await openOAuthUrl(url);
     } catch (err) {
       Alert.alert('Spotify', err.message || 'Could not start Spotify login');
     }

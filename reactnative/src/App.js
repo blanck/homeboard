@@ -61,7 +61,25 @@ const App = () => {
 
     // Warm start
     const sub = Linking.addEventListener('url', ({url}) => handleUrl(url));
-    return () => sub.remove();
+
+    // Web popup flow: the OAuth forwarder page posts the callback query back
+    // to this opener so the kiosk never navigates away from the dashboard
+    let onMessage;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      onMessage = (event) => {
+        const d = event.data;
+        if (!d || d.homeboardOAuth !== true || typeof d.provider !== 'string') return;
+        handleUrl(`oauth/${d.provider}${d.search || ''}`);
+        try {
+          event.source?.close();
+        } catch {}
+      };
+      window.addEventListener('message', onMessage);
+    }
+    return () => {
+      sub.remove();
+      if (onMessage) window.removeEventListener('message', onMessage);
+    };
   }, [setTibberDataApiConnected, setSpotifyConnected]);
 
   return (

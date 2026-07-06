@@ -1,10 +1,11 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, Linking, TouchableOpacity, ActivityIndicator, Switch, Platform} from 'react-native';
+import {View, Text, StyleSheet, Linking, TouchableOpacity, ActivityIndicator, Switch} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {translate} from '../../utils/translations';
 import {fetchTibberHomes} from '../../services/tibberService';
 import {fetchDataApiDevices} from '../../services/tibberService';
 import {startOAuthFlow, isDataApiConnected, clearTokens} from '../../services/tibberOAuthService';
+import {openOAuthUrl} from '../../utils/oauthPopup';
 import useStore from '../../store';
 import DropdownPicker from './DropdownPicker';
 
@@ -56,12 +57,7 @@ const EnergyTab = ({form, updateField, lang, Section, Field}) => {
   const handleConnect = async () => {
     try {
       const url = await startOAuthFlow();
-      if (Platform.OS === 'web') {
-        // Same-tab navigation so the OAuth redirect returns into the app
-        window.location.assign(url);
-      } else {
-        await Linking.openURL(url);
-      }
+      await openOAuthUrl(url);
     } catch (err) {
       console.warn('OAuth start error:', err);
     }
