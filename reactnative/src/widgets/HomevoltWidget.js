@@ -23,7 +23,7 @@ const HomevoltWidget = ({compact = false}) => {
   }
 
   const battery = tibber2.battery;
-  const soc = battery.stateOfCharge ?? 0;
+  const soc = Math.round(battery.stateOfCharge ?? 0);
   const today = battery.aggregatedHistory?.periods?.find(p => p.key === 'TODAY');
   const charged = today?.items?.[0];
   const discharged = today?.items?.[1];

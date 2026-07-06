@@ -29,7 +29,7 @@ const EVBatteryWidget = ({compact = false}) => {
             {vehicle.batteryText?.split(' ').slice(0, -1).join(' ') || 'EV'}
           </Text>
           <Text style={[styles.percent, !vehicle.isAlive && styles.dimText]}>
-            {vehicle.battery?.percent ?? 0}%
+            {Math.round(vehicle.battery?.percent ?? 0)}%
           </Text>
           <View style={styles.barBg}>
             <View
