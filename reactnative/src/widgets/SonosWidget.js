@@ -77,23 +77,30 @@ const SonosWidget = () => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
       try {
-        const controlIp = coordinatorIpRef.current || sonosIp;
+        // Always poll the configured device first: it tells us whether it is
+        // (still) a group member. Following a cached coordinator blindly left
+        // the widget stuck on another room after the group dissolved
         let [track, state, volume, playMode] = await Promise.all([
-          sonosService.getCurrentTrack(controlIp),
-          sonosService.getTransportState(controlIp),
+          sonosService.getCurrentTrack(sonosIp),
+          sonosService.getTransportState(sonosIp),
           sonosService.getVolume(sonosIp),
-          sonosService.getPlayMode(controlIp),
+          sonosService.getPlayMode(sonosIp),
         ]);
         if (track?.grouped) {
-          const cIp = await sonosService.getCoordinatorIp(sonosIp);
-          if (cIp && cIp !== controlIp) {
+          const cIp =
+            coordinatorIpRef.current || (await sonosService.getCoordinatorIp(sonosIp));
+          if (cIp && cIp !== sonosIp) {
             coordinatorIpRef.current = cIp;
             [track, state, playMode] = await Promise.all([
               sonosService.getCurrentTrack(cIp),
               sonosService.getTransportState(cIp),
               sonosService.getPlayMode(cIp),
             ]);
+            // Cached coordinator no longer leads this group; re-resolve next poll
+            if (track?.grouped) coordinatorIpRef.current = null;
           }
+        } else if (track) {
+          coordinatorIpRef.current = null;
         }
         const allFailed = !track && !state && volume == null && !playMode;
         if (allFailed) {

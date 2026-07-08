@@ -271,6 +271,26 @@ export const getVolume = async (ip) => {
   }
 };
 
+// Sonos returns SOAP faults as XML with HTTP 500; fetch does not throw on those
+const isSoapFault = (xml) =>
+  typeof xml === 'string' && (xml.includes('UPnPError') || xml.includes(':Fault>'));
+
+// Switch the device transport to its own queue (node-sonos selectQueue).
+// Reclaims the channel from dead sessions (e.g. a Spotify Connect stream
+// that moved to another device) and breaks the device out of stale groups.
+export const selectQueue = async (ip) => {
+  const uuid = await getDeviceUUID(ip);
+  if (!uuid) return false;
+  await soapRequest(
+    ip,
+    '/MediaRenderer/AVTransport/Control',
+    'urn:schemas-upnp-org:service:AVTransport:1',
+    'SetAVTransportURI',
+    `<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:${uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
+  );
+  return true;
+};
+
 // Toggle play/pause
 export const togglePlayback = async (ip) => {
   const state = await getTransportState(ip);
@@ -283,13 +303,23 @@ export const togglePlayback = async (ip) => {
       '<InstanceID>0</InstanceID>',
     );
   }
-  return await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'Play',
-    '<InstanceID>0</InstanceID><Speed>1</Speed>',
-  );
+  const play = () =>
+    soapRequest(
+      ip,
+      '/MediaRenderer/AVTransport/Control',
+      'urn:schemas-upnp-org:service:AVTransport:1',
+      'Play',
+      '<InstanceID>0</InstanceID><Speed>1</Speed>',
+    );
+  const result = await play();
+  if (isSoapFault(result)) {
+    // Transport is stuck on a dead session; fall back to the device queue,
+    // which still holds whatever the dashboard queued last
+    if (await selectQueue(ip)) {
+      return await play();
+    }
+  }
+  return result;
 };
 
 // Next track
@@ -339,7 +369,8 @@ const getSpotifyTemplate = async (ip) => {
     _spotifyTemplateCache.set(ip, template);
     return template;
   }
-  _spotifyTemplateCache.set(ip, null);
+  // Don't cache the miss: a transient browse failure would otherwise
+  // disable Spotify playback until the app restarts
   return null;
 };
 
@@ -643,8 +674,11 @@ export const playFavorite = async (ip, favorite) => {
       uri.startsWith('x-sonosapi-hls-static:');
 
     if (isContainer) {
-      const uuid = await getDeviceUUID(ip);
-      if (!uuid) return;
+      // Select the device queue BEFORE touching it (legacy server.js order:
+      // selectQueue -> flush -> play). Queue edits are rejected while the
+      // transport sits on a foreign/dead session, e.g. after Spotify Connect
+      // moved to another device
+      if (!(await selectQueue(ip))) return;
 
       await soapRequest(
         ip,
@@ -659,13 +693,6 @@ export const playFavorite = async (ip, favorite) => {
         'urn:schemas-upnp-org:service:AVTransport:1',
         'AddURIToQueue',
         `<InstanceID>0</InstanceID><EnqueuedURI>${encodedUri}</EnqueuedURI><EnqueuedURIMetaData>${metadata}</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>`,
-      );
-      await soapRequest(
-        ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
-        'SetAVTransportURI',
-        `<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:${uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
       );
       await soapRequest(
         ip,
