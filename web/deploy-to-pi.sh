@@ -25,7 +25,7 @@ fi
 echo "==> Copying files"
 ssh "$PI_HOST" 'mkdir -p ~/homeboard-web'
 rsync -az --delete "$DIR/dist/" "$PI_HOST:homeboard-web/dist/"
-rsync -az "$DIR/server.mjs" "$PI_HOST:homeboard-web/"
+rsync -az "$DIR/server.mjs" "$DIR/start-kiosk.sh" "$PI_HOST:homeboard-web/"
 
 echo "==> Installing ws + (re)starting pm2 process"
 ssh "$PI_HOST" "
@@ -37,8 +37,9 @@ ssh "$PI_HOST" "
   $PM2_BIN save
 "
 
-echo "==> Refreshing kiosk browser"
-ssh "$PI_HOST" 'export DISPLAY=:0; xdotool key F5' 2>/dev/null || true
+# --app windows ignore xdotool F5, so restart the browser instead
+echo "==> Restarting kiosk browser"
+ssh "$PI_HOST" 'setsid nohup sh ~/homeboard-web/start-kiosk.sh --restart >/dev/null 2>&1 < /dev/null &' || true
 
 echo "==> Deployed: http://homeboard.local:8080"
 echo "    Rollback: ssh $PI_HOST 'pm2 delete homeboard-web; pm2 start ~/homeboard/server.js --name server; pm2 save'"
