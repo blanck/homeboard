@@ -34,15 +34,36 @@ const useStore = create((set, get) => ({
 
   // Stocks
   quotes: null,
-  setQuotes: (quotes) => set({quotes}),
+  setQuotes: (quotes) =>
+    set((state) => ({quotes, stale: {...state.stale, quotes: 0}})),
+
+  // Data freshness: a failed or incomplete poll keeps the previous data and
+  // bumps the slice's miss counter so widgets grey their accents instead of
+  // disappearing. Once a widget has data it stays until real data replaces
+  // it (or settings are saved, which resets via the plain setters)
+  stale: {},
+  reportFetch: (key, data, valid) =>
+    set((state) => {
+      if (valid) {
+        return {[key]: data, stale: {...state.stale, [key]: 0}};
+      }
+      if (state[key] == null) {
+        // Nothing retained yet: partial data beats an empty widget, but
+        // flag it stale so it renders greyed
+        return {[key]: data, stale: {...state.stale, [key]: 1}};
+      }
+      return {stale: {...state.stale, [key]: (state.stale[key] || 0) + 1}};
+    }),
 
   // Tibber
   tibber: null,
   tibber2: null,
   tibberFeed: null,
   tibberDataApiConnected: false,
-  setTibber: (tibber) => set({tibber}),
-  setTibber2: (tibber2) => set({tibber2}),
+  setTibber: (tibber) =>
+    set((state) => ({tibber, stale: {...state.stale, tibber: 0}})),
+  setTibber2: (tibber2) =>
+    set((state) => ({tibber2, stale: {...state.stale, tibber2: 0}})),
   setTibberFeed: (tibberFeed) => set({tibberFeed}),
   setTibberDataApiConnected: (v) => set({tibberDataApiConnected: v}),
 

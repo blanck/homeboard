@@ -5,6 +5,7 @@ import {fs} from '../utils/scale';
 
 const EVBatteryWidget = ({compact = false}) => {
   const tibber2 = useStore((s) => s.tibber2);
+  const stale = useStore((s) => (s.stale.tibber2 || 0) > 0);
 
   if (
     !tibber2 ||
@@ -28,7 +29,7 @@ const EVBatteryWidget = ({compact = false}) => {
           <Text style={[styles.name, !vehicle.isAlive && styles.dimText]} numberOfLines={1}>
             {vehicle.batteryText?.split(' ').slice(0, -1).join(' ') || 'EV'}
           </Text>
-          <Text style={[styles.percent, !vehicle.isAlive && styles.dimText]}>
+          <Text style={[styles.percent, (stale || !vehicle.isAlive) && styles.dimText]}>
             {Math.round(vehicle.battery?.percent ?? 0)}%
           </Text>
           <View style={styles.barBg}>
@@ -36,7 +37,7 @@ const EVBatteryWidget = ({compact = false}) => {
               style={[
                 styles.barFill,
                 {width: `${Math.min(vehicle.battery?.percent ?? 0, 100)}%`},
-                !vehicle.isAlive ? styles.barDim :
+                stale || !vehicle.isAlive ? styles.barDim :
                   vehicle.battery?.percent > 20 ? styles.barGreen : styles.barRed,
               ]}
             />

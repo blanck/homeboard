@@ -133,6 +133,7 @@ export const fetchTibberDevices = async (config) => {
 
   for (const device of deviceList) {
     const details = await dataApiFetch(`/v1/homes/${homeId}/devices/${device.id || device.deviceId}`);
+    if (!details) continue;
     const dtype = mapDeviceType(device);
 
 

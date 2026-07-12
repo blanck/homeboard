@@ -50,10 +50,8 @@ const Dashboard = () => {
   const setCurrentCondition = useStore((s) => s.setCurrentCondition);
   const setForecast = useStore((s) => s.setForecast);
   const setArticles = useStore((s) => s.setArticles);
-  const setQuotes = useStore((s) => s.setQuotes);
   const setEvents = useStore((s) => s.setEvents);
-  const setTibber = useStore((s) => s.setTibber);
-  const setTibber2 = useStore((s) => s.setTibber2);
+  const reportFetch = useStore((s) => s.reportFetch);
   const setTibberFeed = useStore((s) => s.setTibberFeed);
   const setLaMarzocco = useStore((s) => s.setLaMarzocco);
   const setSettingsVisible = useStore((s) => s.setSettingsVisible);
@@ -104,14 +102,13 @@ const Dashboard = () => {
     try {
       if (config.quotes && config.quotes.length > 0) {
         const q = await fetchQuotes(config.quotes);
-        if (q) {
-          setQuotes(q);
-        }
+        reportFetch('quotes', q, !!(q && q.length > 0));
       }
     } catch (err) {
       console.warn('Stocks error:', err);
+      reportFetch('quotes', null, false);
     }
-  }, [config, setWeather, setCurrentCondition, setArticles, setQuotes]);
+  }, [config, setWeather, setCurrentCondition, setArticles, reportFetch]);
 
   usePolling(fetchMinutely, minuteInterval, configLoaded);
 
@@ -146,20 +143,27 @@ const Dashboard = () => {
     if (isTibberEnabled) {
       try {
         const tibberData = await fetchTibberPrices(config);
-        if (tibberData) {
-          setTibber(tibberData);
-        }
+        const priceInfo = tibberData?.currentSubscription?.priceInfo;
+        reportFetch(
+          'tibber',
+          tibberData,
+          !!(priceInfo?.current && priceInfo?.today?.length),
+        );
       } catch (err) {
         console.warn('Tibber error:', err);
+        reportFetch('tibber', null, false);
       }
 
       try {
         const t2 = await fetchTibberDevices(config);
-        if (t2) {
-          setTibber2(t2);
-        }
+        // Incomplete if a device section we had last time is missing now
+        const prev = useStore.getState().tibber2;
+        const missingSection =
+          !!prev && !!t2 && Object.keys(prev).some((k) => !t2[k]);
+        reportFetch('tibber2', t2, !!t2 && !missingSection);
       } catch (err) {
         console.warn('Tibber devices error:', err);
+        reportFetch('tibber2', null, false);
       }
     }
 
@@ -175,7 +179,7 @@ const Dashboard = () => {
     } catch (err) {
       console.warn('LaMarzocco error:', err);
     }
-  }, [config, isTibberEnabled, setForecast, setEvents, setTibber, setTibber2, setLaMarzocco]);
+  }, [config, isTibberEnabled, setForecast, setEvents, reportFetch, setLaMarzocco]);
 
   usePolling(fetchHourly, 60 * 60 * 1000, configLoaded);
 

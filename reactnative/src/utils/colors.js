@@ -1,3 +1,6 @@
+// Shown in place of a widget's accent color while its data is stale
+export const staleColor = '#888888';
+
 // Energy price level colors — port from home.vue formatEnergyColor
 export const energyColor = (level) => {
   switch (level) {

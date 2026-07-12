@@ -7,13 +7,14 @@ import {
   formatStockSymbol,
   formatLastUpdated,
 } from '../utils/formatting';
-import {stockColor, stockTypeBorder} from '../utils/colors';
+import {stockColor, stockTypeBorder, staleColor} from '../utils/colors';
 import {translate} from '../utils/translations';
 import WidgetCard from '../components/WidgetCard';
 import {fs} from '../utils/scale';
 
 const StocksWidget = () => {
   const quotes = useStore((s) => s.quotes);
+  const stale = useStore((s) => (s.stale.quotes || 0) > 0);
   const config = useStore((s) => s.config);
   const lang = config.language || 'en';
 
@@ -38,7 +39,9 @@ const StocksWidget = () => {
           ? quotes.map((quote, index) => {
               const p = quote.price;
               const borderColor = stockTypeBorder(p.quoteType);
-              const pctColor = stockColor(p.regularMarketChangePercent);
+              const pctColor = stale
+                ? staleColor
+                : stockColor(p.regularMarketChangePercent);
               return (
                 <TouchableOpacity
                   key={index}

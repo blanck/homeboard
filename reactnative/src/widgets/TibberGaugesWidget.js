@@ -2,7 +2,7 @@ import React, {useState, useCallback} from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import useStore from '../store';
 import GaugeCircle from '../components/GaugeCircle';
-import {energyColor, solarColor} from '../utils/colors';
+import {energyColor, solarColor, staleColor} from '../utils/colors';
 import {formatEnergyPrice, formatEnergyDate} from '../utils/formatting';
 import {translate} from '../utils/translations';
 import {fs, sp} from '../utils/scale';
@@ -10,6 +10,8 @@ import {fs, sp} from '../utils/scale';
 const TibberGaugesWidget = () => {
   const tibber = useStore((s) => s.tibber);
   const tibber2 = useStore((s) => s.tibber2);
+  const priceStale = useStore((s) => (s.stale.tibber || 0) > 0);
+  const devicesStale = useStore((s) => (s.stale.tibber2 || 0) > 0);
   const config = useStore((s) => s.config);
   const lang = config.language || 'en';
 
@@ -36,8 +38,8 @@ const TibberGaugesWidget = () => {
             <GaugeCircle
               value={Math.min(current.total, 1)}
               valueText={formatEnergyPrice(current.total)}
-              valueTextColor={energyColor(current.level)}
-              borderColor={energyColor(current.level)}
+              valueTextColor={priceStale ? staleColor : energyColor(current.level)}
+              borderColor={priceStale ? staleColor : energyColor(current.level)}
               size={gaugeSize}
               subText={formatEnergyDate(current.startsAt)}
             />
@@ -52,8 +54,8 @@ const TibberGaugesWidget = () => {
           <GaugeCircle
             value={parseFloat(tibber2.inverter.bubble.percent / 100)}
             valueText={tibber2.inverter.bubble.value + ' W'}
-            valueTextColor={solarColor(tibber2.inverter.bubble.percent)}
-            borderColor={solarColor(tibber2.inverter.bubble.percent)}
+            valueTextColor={devicesStale ? staleColor : solarColor(tibber2.inverter.bubble.percent)}
+            borderColor={devicesStale ? staleColor : solarColor(tibber2.inverter.bubble.percent)}
             size={gaugeSize > 0 ? gaugeSize : sp(120)}
             labelText={
               tibber2.inverterProduction

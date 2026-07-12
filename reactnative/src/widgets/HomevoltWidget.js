@@ -17,6 +17,7 @@ const formatPower = (w) => {
 
 const HomevoltWidget = ({compact = false}) => {
   const tibber2 = useStore((s) => s.tibber2);
+  const stale = useStore((s) => (s.stale.tibber2 || 0) > 0);
 
   if (!tibber2 || !tibber2.battery) {
     return null;
@@ -41,16 +42,16 @@ const HomevoltWidget = ({compact = false}) => {
         <Icon
           name={mode === 'charging' ? 'battery-charging' : batteryIcon}
           size={28}
-          color={!battery.isAlive ? '#888' : soc > 20 ? '#3fcf40' : '#ff4444'}
+          color={stale || !battery.isAlive ? '#888' : soc > 20 ? '#3fcf40' : '#ff4444'}
         />
-        <Text style={styles.socText}>{soc}%</Text>
+        <Text style={[styles.socText, stale && styles.staleText]}>{soc}%</Text>
       </View>
       <View style={styles.barBg}>
         <View
           style={[
             styles.barFill,
             {width: `${Math.min(soc, 100)}%`},
-            soc > 20 ? styles.barGreen : styles.barRed,
+            stale ? styles.barStale : soc > 20 ? styles.barGreen : styles.barRed,
           ]}
         />
       </View>
@@ -112,6 +113,12 @@ const styles = StyleSheet.create({
   },
   barRed: {
     backgroundColor: '#ff4444',
+  },
+  barStale: {
+    backgroundColor: '#888888',
+  },
+  staleText: {
+    color: '#888888',
   },
   power: {
     color: '#cccccc',

@@ -10,10 +10,12 @@ import Svg, {
 } from 'react-native-svg';
 import {energyColor} from '../utils/colors';
 
-const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
+const PriceChart = ({data, currentPrice, stale = false, width = 400, height = 200}) => {
   if (!data || data.length === 0) {
     return null;
   }
+
+  const markerColor = stale ? '#999999' : '#e0433d';
 
   const padding = {top: 24, right: 20, bottom: 34, left: 56};
   const chartW = width - padding.left - padding.right;
@@ -164,7 +166,7 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
               y1={markerY}
               x2={width - padding.right}
               y2={markerY}
-              stroke="#e0433d"
+              stroke={markerColor}
               strokeOpacity={0.85}
               strokeWidth={1}
               strokeDasharray="5,4"
@@ -172,7 +174,7 @@ const PriceChart = ({data, currentPrice, width = 400, height = 200}) => {
             <SvgText
               x={width - padding.right - 4}
               y={markerY - 6}
-              fill="#e0433d"
+              fill={markerColor}
               fontSize="11"
               fontWeight="600"
               textAnchor="end">

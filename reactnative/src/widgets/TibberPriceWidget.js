@@ -10,6 +10,7 @@ import {fs} from '../utils/scale';
 
 const TibberPriceWidget = () => {
   const tibber = useStore((s) => s.tibber);
+  const stale = useStore((s) => (s.stale.tibber || 0) > 0);
   const config = useStore((s) => s.config);
   const [chartSize, setChartSize] = useState({width: 0, height: 0});
   const lang = config.language || 'en';
@@ -75,6 +76,7 @@ const TibberPriceWidget = () => {
           <PriceChart
             data={chartData}
             currentPrice={currentPrice}
+            stale={stale}
             width={chartSize.width}
             height={chartSize.height}
           />
