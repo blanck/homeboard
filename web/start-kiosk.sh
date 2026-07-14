@@ -17,8 +17,11 @@ xset -display :0.0 dpms force on; xset -display :0.0 -dpms
 pkill chromium 2>/dev/null && sleep 2
 
 [ "$1" = "--restart" ] || sleep 8
-# GPU flags: chromium 92 blocklists compositing on the Pi otherwise
+# GPU flags: chromium 92 blocklists compositing on the Pi otherwise.
+# Console logging + localhost-only DevTools port make the kiosk debuggable:
+# app console.warn ends up in ~/.config/chromium/chrome_debug.log
 chromium-browser --kiosk --start-fullscreen --noerrdialogs \
   --disable-session-crashed-bubble --disable-infobars --check-for-update-interval=604800 \
   --use-gl=egl --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy \
+  --enable-logging --log-level=0 --remote-debugging-port=9222 \
   --app=http://localhost:8080 &
