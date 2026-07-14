@@ -392,8 +392,10 @@ export const playSpotifyURI = async (ip, spotifyUri) => {
     console.warn('Bad Spotify URI:', spotifyUri);
     return;
   }
-  const newType = parts[1];
-  const newId = parts[2];
+  // Type and id are the LAST two segments: legacy sharing URIs look like
+  // spotify:user:<owner>:playlist:<id>, modern ones spotify:playlist:<id>
+  const newType = parts[parts.length - 2];
+  const newId = parts[parts.length - 1];
 
   const template = await getSpotifyTemplate(ip);
   if (!template) {
