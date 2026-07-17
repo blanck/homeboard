@@ -4,6 +4,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from './store';
 import usePolling from './hooks/usePolling';
+import useAutoSleep from './hooks/useAutoSleep';
 import useNetworkRefresh from './hooks/useNetworkRefresh';
 import useIsOnline from './hooks/useIsOnline';
 
@@ -73,6 +74,8 @@ const Dashboard = () => {
     }, 60 * 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const onUserActivity = useAutoSleep(config.autosleep, configLoaded);
 
   // Determine polling interval — reduced frequency between 2-8am
   const isNightMode = hour > 2 && hour < 8;
@@ -248,7 +251,11 @@ const Dashboard = () => {
     : (dayUrl ? {uri: dayUrl} : bgBeach);
 
   return (
-    <ImageBackground source={bgSource} style={styles.background} resizeMode="cover">
+    <ImageBackground
+      source={bgSource}
+      style={styles.background}
+      resizeMode="cover"
+      onTouchStart={onUserActivity}>
       <View
         style={[
           styles.container,
