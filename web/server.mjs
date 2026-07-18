@@ -274,11 +274,12 @@ const handleLegacyConfig = async (res) => {
 // Ported from the legacy server.js socket handlers (sleep/reboot/restart).
 
 const SYSTEM_COMMANDS = {
-  // Touch input does not wake DPMS on the Pi touchscreen, so the app calls
-  // /system/wake explicitly on the first touch (like the legacy socket API)
-  sleep: 'export DISPLAY=:0; xset -display :0.0 dpms force off',
-  // Wake must also re-disable DPMS: `dpms force off` re-arms the DPMS idle
-  // timers, which would otherwise blank the panel on their own during the day
+  // Verbatim legacy server.js commands. Blank via the X screensaver, NOT
+  // DPMS off: when this monitor powers down it stops delivering touch
+  // events, so a DPMS-slept panel can never be woken by touch. Screensaver
+  // blanking keeps the monitor awake showing black (tvservice -p keeps HDMI
+  // powered), and X natively unblanks on any input.
+  sleep: 'export DISPLAY=:0; sleep 1; xset -display :0.0 s activate; /usr/bin/tvservice -p',
   wake: 'export DISPLAY=:0; xset -display :0.0 s off; xset -display :0.0 dpms force on; xset -display :0.0 -dpms',
   // Raspberry Pi OS default user has passwordless sudo
   reboot: 'sudo reboot',
