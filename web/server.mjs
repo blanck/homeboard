@@ -284,10 +284,24 @@ const SYSTEM_COMMANDS = {
   reboot: 'sudo reboot',
 };
 
+// A sleep tick that lands right after a touch-triggered wake would re-blank
+// the panel the user just woke; wakes win for a grace period
+const WAKE_GRACE_MS = 20 * 1000;
+let lastWakeAt = 0;
+
 const handleSystem = (req, res, action) => {
   if (req.method !== 'POST') {
     res.writeHead(405);
     res.end();
+    return;
+  }
+  console.log(new Date().toISOString(), 'system', action, 'from', req.socket.remoteAddress);
+  if (action === 'wake') {
+    lastWakeAt = Date.now();
+  }
+  if (action === 'sleep' && Date.now() - lastWakeAt < WAKE_GRACE_MS) {
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end('{"ok":true,"skipped":"wake-grace"}');
     return;
   }
   if (action === 'restart') {
