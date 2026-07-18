@@ -19,6 +19,7 @@ const SonosWidget = () => {
   const showGroupVolume = useStore((s) => s.showGroupVolume);
 
   const volumeTimerRef = useRef(null);
+  const volumeBarRef = useRef(null);
   const inFlightRef = useRef(false);
   const failuresRef = useRef(0);
   const rediscoveringRef = useRef(false);
@@ -247,9 +248,19 @@ const SonosWidget = () => {
                 <Icon name="volume-down" size={22} color="#ffffff" />
               </TouchableOpacity>
               <TouchableOpacity
+                ref={volumeBarRef}
                 style={styles.volumeBar}
                 hitSlop={{top: 14, bottom: 14}}
-                onPress={showGroupVolume}>
+                onPress={() => {
+                  const ref = volumeBarRef.current;
+                  if (ref?.measureInWindow) {
+                    ref.measureInWindow((x, y, width, height) =>
+                      showGroupVolume({x, y, width, height}),
+                    );
+                  } else {
+                    showGroupVolume(null);
+                  }
+                }}>
                 <View
                   style={[
                     styles.volumeFill,

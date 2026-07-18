@@ -135,8 +135,9 @@ const useStore = create((set, get) => ({
   hideQuickPick: () =>
     set({quickPickPopupVisible: false, currentQuickPick: null, popupAnchor: null}),
   groupVolumeVisible: false,
-  showGroupVolume: () => set({groupVolumeVisible: true}),
-  hideGroupVolume: () => set({groupVolumeVisible: false}),
+  showGroupVolume: (anchor) =>
+    set({groupVolumeVisible: true, popupAnchor: anchor || null}),
+  hideGroupVolume: () => set({groupVolumeVisible: false, popupAnchor: null}),
   searchPopupVisible: false,
   showSearch: (anchor) =>
     set({searchPopupVisible: true, popupAnchor: anchor || null}),

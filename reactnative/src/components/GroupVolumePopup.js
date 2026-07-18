@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Modal,
   Pressable,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import useStore from '../store';
@@ -20,6 +22,7 @@ const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
 const GroupVolumePopup = () => {
   const visible = useStore((s) => s.groupVolumeVisible);
   const hide = useStore((s) => s.hideGroupVolume);
+  const anchor = useStore((s) => s.popupAnchor);
   const config = useStore((s) => s.config);
   const sonosIp = config.sonos?.ip;
   const lang = config.language || 'en';
@@ -27,6 +30,28 @@ const GroupVolumePopup = () => {
   const [speakers, setSpeakers] = useState([]);
   const lastTouchRef = useRef(0);
   const barWidthsRef = useRef({});
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      slideAnim.setValue(0);
+      fadeAnim.setValue(0);
+      Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 1,
+          damping: 22,
+          stiffness: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, slideAnim, fadeAnim]);
 
   useEffect(() => {
     if (!visible || !sonosIp) {
@@ -83,6 +108,38 @@ const GroupVolumePopup = () => {
 
   if (!visible) return null;
 
+  // Anchored above the volume bar, centered over it, clamped to the screen
+  const window = Dimensions.get('window');
+  const PANEL_WIDTH = Math.min(sp(360), window.width - 16);
+  let panelStyle = styles.panelCentered;
+  if (anchor) {
+    const left = Math.max(
+      8,
+      Math.min(
+        anchor.x + anchor.width / 2 - PANEL_WIDTH / 2,
+        window.width - PANEL_WIDTH - 8,
+      ),
+    );
+    panelStyle = {
+      position: 'absolute',
+      bottom: window.height - anchor.y + 10,
+      left,
+      width: PANEL_WIDTH,
+    };
+  }
+
+  const panelAnimStyle = {
+    opacity: slideAnim,
+    transform: [
+      {
+        translateY: slideAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [30, 0],
+        }),
+      },
+    ],
+  };
+
   const average =
     speakers.length > 0
       ? speakers.reduce((sum, s) => sum + s.volume, 0) / speakers.length
@@ -127,14 +184,14 @@ const GroupVolumePopup = () => {
   return (
     <Modal
       visible={true}
-      animationType="fade"
+      animationType="none"
       transparent={true}
       statusBarTranslucent={true}
       navigationBarTranslucent={true}
       onRequestClose={hide}>
-      <View style={styles.overlay}>
+      <Animated.View style={[styles.overlay, {opacity: fadeAnim}]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={hide} />
-        <View style={styles.panel}>
+        <Animated.View style={[styles.panel, panelStyle, panelAnimStyle]}>
           {speakers.length > 1
             ? renderRow('group', translate('groupVolume', lang), average, (v) =>
                 adjustAll(v - average),
@@ -148,8 +205,8 @@ const GroupVolumePopup = () => {
           {speakers.length === 0 ? (
             <Text style={styles.loading}>...</Text>
           ) : null}
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
     </Modal>
   );
 };
@@ -165,6 +222,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: sp(12),
     paddingHorizontal: sp(16),
+  },
+  panelCentered: {
     alignSelf: 'center',
     width: sp(360),
     maxWidth: '90%',
