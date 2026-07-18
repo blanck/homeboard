@@ -30,6 +30,7 @@ import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 import SettingsModal from './components/SettingsModal';
 import NewsPopup from './components/NewsPopup';
 import PlaylistPopup from './components/PlaylistPopup';
+import GroupVolumePopup from './components/GroupVolumePopup';
 import SearchPopup from './components/SearchPopup';
 
 // Services
@@ -375,6 +376,7 @@ const Dashboard = () => {
         <SettingsModal />
         <NewsPopup />
         <PlaylistPopup />
+        <GroupVolumePopup />
         <SearchPopup />
       </View>
     </ImageBackground>

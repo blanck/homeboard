@@ -16,6 +16,7 @@ const SonosWidget = () => {
   const setSonosVolume = useStore((s) => s.setSonosVolume);
   const setSonosShuffle = useStore((s) => s.setSonosShuffle);
   const incrementSonosPosition = useStore((s) => s.incrementSonosPosition);
+  const showGroupVolume = useStore((s) => s.showGroupVolume);
 
   const volumeTimerRef = useRef(null);
   const inFlightRef = useRef(false);
@@ -245,14 +246,17 @@ const SonosWidget = () => {
                 onPressOut={stopVolumeRepeat}>
                 <Icon name="volume-down" size={22} color="#ffffff" />
               </TouchableOpacity>
-              <View style={styles.volumeBar}>
+              <TouchableOpacity
+                style={styles.volumeBar}
+                hitSlop={{top: 14, bottom: 14}}
+                onPress={showGroupVolume}>
                 <View
                   style={[
                     styles.volumeFill,
                     {width: `${Math.min(sonos.volume, 100)}%`},
                   ]}
                 />
-              </View>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={volumeUp}
                 onLongPress={() => startVolumeRepeat(1)}
@@ -357,6 +361,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#444444',
     borderRadius: 2,
     marginHorizontal: 8,
+    justifyContent: 'center',
   },
   volumeFill: {
     height: 3,

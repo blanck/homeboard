@@ -333,18 +333,23 @@ export const nextTrack = async (ip) => {
   );
 };
 
-// Adjust volume
-export const adjustVolume = async (ip, delta) => {
-  const current = await getVolume(ip);
-  if (current == null) return;
-  const newVol = Math.min(100, Math.max(0, current + delta));
+// Set absolute volume (0-100)
+export const setVolume = async (ip, volume) => {
+  const vol = Math.min(100, Math.max(0, Math.round(volume)));
   return await soapRequest(
     ip,
     '/MediaRenderer/RenderingControl/Control',
     'urn:schemas-upnp-org:service:RenderingControl:1',
     'SetVolume',
-    `<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>${newVol}</DesiredVolume>`,
+    `<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>${vol}</DesiredVolume>`,
   );
+};
+
+// Adjust volume
+export const adjustVolume = async (ip, delta) => {
+  const current = await getVolume(ip);
+  if (current == null) return;
+  return await setVolume(ip, current + delta);
 };
 
 // Find a Sonos-provided Spotify template URI + resMD by looking through the user's
@@ -460,12 +465,14 @@ const parseZoneGroups = (text) => {
       const ipMatch = location.match(/\/\/([^:]+):/);
       const memberIp = ipMatch ? ipMatch[1] : null;
 
-      if (zoneName && memberIp) {
-        members.push({name: zoneName, ip: memberIp});
+      if (memberIp && (uuid === coordinatorUuid || location.includes(coordinatorUuid))) {
+        coordinatorIp = memberIp;
+      }
 
-        if (uuid === coordinatorUuid || location.includes(coordinatorUuid)) {
-          coordinatorIp = memberIp;
-        }
+      // Skip invisible members (stereo-pair satellites, subs): they mirror
+      // the pair master and should not be listed or controlled separately
+      if (zoneName && memberIp && extractAttr(tag, 'Invisible') !== '1') {
+        members.push({name: zoneName, ip: memberIp});
       }
     }
 
@@ -530,6 +537,21 @@ export const getCoordinatorIp = async (ip) => {
     console.warn('Sonos coordinator lookup error:', err);
   }
   return ip; // fallback to the device itself
+};
+
+// Visible members of the group containing the given device; falls back to
+// the device itself when ungrouped or on topology errors
+export const getGroupMembers = async (ip) => {
+  try {
+    const groups = await getZoneGroups(ip);
+    const group = groups.find((g) => g.members.some((m) => m.ip === ip));
+    if (group && group.members.length > 0) {
+      return group.members;
+    }
+  } catch (err) {
+    console.warn('Sonos group members error:', err);
+  }
+  return [{name: '', ip}];
 };
 
 // Get Sonos favorites (Browse FV:2 via ContentDirectory)
