@@ -17,12 +17,34 @@ export const inSleepWindow = (autosleep, hour) => {
   return start > end ? hour >= start || hour < end : hour >= start && hour < end;
 };
 
+const WAKE_THROTTLE_MS = 10 * 1000;
+
 const useAutoSleep = (autosleep, enabled = true) => {
   const lastActiveRef = useRef(Date.now());
+  const lastWakeRef = useRef(0);
 
   const onActivity = useCallback(() => {
     lastActiveRef.current = Date.now();
+    // X does not wake DPMS from touchscreen input, so wake explicitly on
+    // every touch (throttled). A no-op when the panel is already on, and
+    // immune to page reloads losing track of whether we put it to sleep
+    if (Date.now() - lastWakeRef.current > WAKE_THROTTLE_MS) {
+      lastWakeRef.current = Date.now();
+      fetch('/system/wake', {method: 'POST'}).catch(() => {});
+    }
   }, []);
+
+  // react-native-web does not fire the onTouchStart view prop, so on web
+  // listen at the window level (capture also covers modals/portals)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    window.addEventListener('touchstart', onActivity, true);
+    window.addEventListener('mousedown', onActivity, true);
+    return () => {
+      window.removeEventListener('touchstart', onActivity, true);
+      window.removeEventListener('mousedown', onActivity, true);
+    };
+  }, [onActivity]);
 
   useEffect(() => {
     if (!enabled || !autosleep) return;
