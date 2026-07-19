@@ -16,9 +16,11 @@ import {translate} from '../utils/translations';
 import {fs, sp} from '../utils/scale';
 
 const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
+const SEND_THROTTLE_MS = 150;
 
 // Per-speaker volume control for the current Sonos group, like the group
-// volume view in the Sonos app: one master row plus a row per speaker
+// volume view in the Sonos app: a master row, a draggable slider per
+// speaker, and rows to add/remove speakers from the group
 const GroupVolumePopup = () => {
   const visible = useStore((s) => s.groupVolumeVisible);
   const hide = useStore((s) => s.hideGroupVolume);
@@ -28,8 +30,12 @@ const GroupVolumePopup = () => {
   const lang = config.language || 'en';
 
   const [speakers, setSpeakers] = useState([]);
+  const [available, setAvailable] = useState([]);
+  const [coordinatorIp, setCoordinatorIp] = useState(null);
   const lastTouchRef = useRef(0);
-  const barWidthsRef = useRef({});
+  const barGeomRef = useRef({});
+  const barRefs = useRef({});
+  const sendPendingRef = useRef({});
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -53,39 +59,53 @@ const GroupVolumePopup = () => {
     }
   }, [visible, slideAnim, fadeAnim]);
 
+  const load = useCallback(async () => {
+    if (!sonosIp) return;
+    const groups = await sonosService.getZoneGroups(sonosIp);
+    const mine = groups.find((g) => g.members.some((m) => m.ip === sonosIp));
+    const members = mine ? mine.members : [{name: '', ip: sonosIp}];
+    const others = groups
+      .filter((g) => g !== mine)
+      .flatMap((g) => g.members);
+    const volumes = await Promise.all(
+      members.map((m) => sonosService.getVolume(m.ip)),
+    );
+    // Don't clobber optimistic values while the user is adjusting
+    if (Date.now() - lastTouchRef.current < 2500) return;
+    setCoordinatorIp(mine ? mine.coordinatorIp : sonosIp);
+    setSpeakers(members.map((m, i) => ({...m, volume: volumes[i] ?? 0})));
+    setAvailable(others);
+  }, [sonosIp]);
+
   useEffect(() => {
-    if (!visible || !sonosIp) {
+    if (!visible) {
       setSpeakers([]);
+      setAvailable([]);
       return;
     }
-    let alive = true;
-    const load = async () => {
-      const members = await sonosService.getGroupMembers(sonosIp);
-      const volumes = await Promise.all(
-        members.map((m) => sonosService.getVolume(m.ip)),
-      );
-      if (!alive) return;
-      // Don't clobber optimistic values while the user is adjusting
-      if (Date.now() - lastTouchRef.current < 2500) return;
-      setSpeakers(
-        members.map((m, i) => ({...m, volume: volumes[i] ?? 0})),
-      );
-    };
     load();
     const timer = setInterval(load, 3000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [visible, sonosIp]);
+    return () => clearInterval(timer);
+  }, [visible, load]);
 
+  // Local state updates on every move; network sends are throttled per ip
   const setSpeakerVolume = useCallback((ip, volume) => {
     const vol = clamp(volume);
     lastTouchRef.current = Date.now();
     setSpeakers((prev) =>
       prev.map((s) => (s.ip === ip ? {...s, volume: vol} : s)),
     );
-    sonosService.setVolume(ip, vol);
+    const pending = sendPendingRef.current;
+    if (pending[ip] !== undefined) {
+      pending[ip] = vol;
+      return;
+    }
+    pending[ip] = vol;
+    setTimeout(() => {
+      const latest = pending[ip];
+      delete pending[ip];
+      sonosService.setVolume(ip, latest);
+    }, SEND_THROTTLE_MS);
   }, []);
 
   const adjustAll = useCallback(
@@ -95,15 +115,46 @@ const GroupVolumePopup = () => {
     [speakers, setSpeakerVolume],
   );
 
-  const onBarPress = useCallback(
+  const applyFromPageX = useCallback((key, pageX, apply) => {
+    const bar = barGeomRef.current[key];
+    if (bar && bar.width > 0 && pageX != null) {
+      apply(((pageX - bar.x) / bar.width) * 100);
+    }
+  }, []);
+
+  const beginDrag = useCallback(
     (key, e, apply) => {
-      const width = barWidthsRef.current[key];
-      const x = e?.nativeEvent?.locationX;
-      if (width > 0 && x != null) {
-        apply((x / width) * 100);
+      const pageX = e.nativeEvent.pageX;
+      const ref = barRefs.current[key];
+      if (ref?.measureInWindow) {
+        ref.measureInWindow((x, y, width) => {
+          barGeomRef.current[key] = {x, width};
+          applyFromPageX(key, pageX, apply);
+        });
       }
     },
-    [],
+    [applyFromPageX],
+  );
+
+  const addSpeaker = useCallback(
+    async (ip) => {
+      if (!coordinatorIp) return;
+      setAvailable((prev) => prev.filter((s) => s.ip !== ip));
+      await sonosService.joinGroup(ip, coordinatorIp);
+      lastTouchRef.current = 0;
+      setTimeout(load, 1000);
+    },
+    [coordinatorIp, load],
+  );
+
+  const removeSpeaker = useCallback(
+    async (ip) => {
+      setSpeakers((prev) => prev.filter((s) => s.ip !== ip));
+      await sonosService.leaveGroup(ip);
+      lastTouchRef.current = 0;
+      setTimeout(load, 1000);
+    },
+    [load],
   );
 
   if (!visible) return null;
@@ -146,23 +197,35 @@ const GroupVolumePopup = () => {
       : 0;
 
   const renderBar = (key, value, apply) => (
-    <Pressable
-      style={styles.bar}
-      hitSlop={{top: 14, bottom: 14}}
-      onLayout={(e) => {
-        barWidthsRef.current[key] = e.nativeEvent.layout.width;
+    <View
+      ref={(r) => {
+        barRefs.current[key] = r;
       }}
-      onPress={(e) => onBarPress(key, e, apply)}>
-      <View style={[styles.barFill, {width: `${clamp(value)}%`}]} />
-    </Pressable>
+      style={styles.bar}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={(e) => beginDrag(key, e, apply)}
+      onResponderMove={(e) => applyFromPageX(key, e.nativeEvent.pageX, apply)}>
+      <View style={styles.barTrack}>
+        <View style={[styles.barFill, {width: `${clamp(value)}%`}]} />
+      </View>
+      <View style={[styles.thumb, {left: `${clamp(value)}%`}]} />
+    </View>
   );
 
-  const renderRow = (key, label, value, apply) => (
+  const renderRow = (key, label, value, apply, removable) => (
     <View key={key} style={styles.speakerBlock}>
       <View style={styles.labelRow}>
         <Text style={styles.speakerName} numberOfLines={1}>
           {label}
         </Text>
+        {removable ? (
+          <TouchableOpacity
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+            onPress={() => removeSpeaker(key)}>
+            <Icon name="close" size={18} color="#666666" />
+          </TouchableOpacity>
+        ) : null}
         <Text style={styles.volumeText}>{clamp(value)}</Text>
       </View>
       <View style={styles.controlRow}>
@@ -198,10 +261,26 @@ const GroupVolumePopup = () => {
               )
             : null}
           {speakers.map((s) =>
-            renderRow(s.ip, s.name || 'Sonos', s.volume, (v) =>
-              setSpeakerVolume(s.ip, v),
+            renderRow(
+              s.ip,
+              s.name || 'Sonos',
+              s.volume,
+              (v) => setSpeakerVolume(s.ip, v),
+              speakers.length > 1 && s.ip !== coordinatorIp,
             ),
           )}
+          {available.length > 0 ? <View style={styles.divider} /> : null}
+          {available.map((s) => (
+            <TouchableOpacity
+              key={s.ip}
+              style={styles.addRow}
+              onPress={() => addSpeaker(s.ip)}>
+              <Icon name="add-circle-outline" size={22} color="#888888" />
+              <Text style={styles.addName} numberOfLines={1}>
+                {s.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
           {speakers.length === 0 ? (
             <Text style={styles.loading}>...</Text>
           ) : null}
@@ -236,35 +315,68 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: sp(4),
+    gap: sp(8),
   },
   speakerName: {
     color: '#ffffff',
     fontSize: fs(14),
     fontWeight: '600',
     flex: 1,
-    marginRight: 8,
   },
   volumeText: {
     color: '#888888',
     fontSize: fs(13),
     fontVariant: ['tabular-nums'],
+    minWidth: 24,
+    textAlign: 'right',
   },
   controlRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: sp(10),
   },
+  // Tall touch target wrapping a thin visual track + thumb
   bar: {
     flex: 1,
+    height: sp(28),
+    justifyContent: 'center',
+  },
+  barTrack: {
     height: 5,
     backgroundColor: '#444444',
     borderRadius: 3,
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
   barFill: {
     height: 5,
     backgroundColor: '#0B77EF',
     borderRadius: 3,
+  },
+  thumb: {
+    position: 'absolute',
+    top: '50%',
+    width: sp(14),
+    height: sp(14),
+    borderRadius: sp(7),
+    backgroundColor: '#ffffff',
+    marginLeft: -sp(7),
+    marginTop: -sp(7),
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginVertical: sp(8),
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: sp(10),
+    paddingVertical: sp(9),
+  },
+  addName: {
+    color: '#cccccc',
+    fontSize: fs(14),
+    flex: 1,
   },
   loading: {
     color: '#888888',

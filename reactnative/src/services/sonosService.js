@@ -539,6 +539,31 @@ export const getCoordinatorIp = async (ip) => {
   return ip; // fallback to the device itself
 };
 
+// Add a speaker to the group led by coordinatorIp
+export const joinGroup = async (memberIp, coordinatorIp) => {
+  const uuid = await getDeviceUUID(coordinatorIp);
+  if (!uuid) return false;
+  await soapRequest(
+    memberIp,
+    '/MediaRenderer/AVTransport/Control',
+    'urn:schemas-upnp-org:service:AVTransport:1',
+    'SetAVTransportURI',
+    `<InstanceID>0</InstanceID><CurrentURI>x-rincon:${uuid}</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
+  );
+  return true;
+};
+
+// Remove a speaker from its group (it becomes standalone)
+export const leaveGroup = async (ip) => {
+  await soapRequest(
+    ip,
+    '/MediaRenderer/AVTransport/Control',
+    'urn:schemas-upnp-org:service:AVTransport:1',
+    'BecomeCoordinatorOfStandaloneGroup',
+    '<InstanceID>0</InstanceID>',
+  );
+};
+
 // Visible members of the group containing the given device; falls back to
 // the device itself when ungrouped or on topology errors
 export const getGroupMembers = async (ip) => {
