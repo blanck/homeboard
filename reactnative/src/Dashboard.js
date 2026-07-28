@@ -32,6 +32,7 @@ import NewsPopup from './components/NewsPopup';
 import PlaylistPopup from './components/PlaylistPopup';
 import GroupVolumePopup from './components/GroupVolumePopup';
 import SearchPopup from './components/SearchPopup';
+import Toast from './components/Toast';
 
 // Services
 import {fetchCurrentWeather, fetchForecast, fetchNetatmoForecast, fetchNetatmoPublicForecast} from './services/weatherService';
@@ -378,6 +379,7 @@ const Dashboard = () => {
         <PlaylistPopup />
         <GroupVolumePopup />
         <SearchPopup />
+        <Toast />
       </View>
     </ImageBackground>
   );

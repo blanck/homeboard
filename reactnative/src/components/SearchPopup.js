@@ -26,6 +26,7 @@ const SearchPopup = () => {
   const hide = useStore((s) => s.hideSearch);
   const config = useStore((s) => s.config);
   const spotifyConnectedFlag = useStore((s) => s.spotifyConnected);
+  const showToast = useStore((s) => s.showToast);
   const sonosIp = config.sonos?.ip;
   const lang = config.language || 'en';
   const [spotifyOn, setSpotifyOn] = useState(false);
@@ -110,22 +111,20 @@ const SearchPopup = () => {
 
   const onSelect = useCallback(
     async (item) => {
-      if (!sonosIp) {
-        hide();
-        return;
-      }
+      hide();
+      if (!sonosIp) return;
       try {
-        if (item.uri && item.uri.startsWith('spotify:')) {
-          await playSpotifyURI(sonosIp, item.uri);
-        } else {
-          await playFavorite(sonosIp, item);
-        }
+        const result =
+          item.uri && item.uri.startsWith('spotify:')
+            ? await playSpotifyURI(sonosIp, item.uri)
+            : await playFavorite(sonosIp, item);
+        if (!result?.ok) showToast(translate('couldNotPlay', lang));
       } catch (err) {
         console.warn('Sonos play error:', err);
+        showToast(translate('couldNotPlay', lang));
       }
-      hide();
     },
-    [sonosIp, hide],
+    [sonosIp, hide, showToast, lang],
   );
 
   if (!visible) return null;

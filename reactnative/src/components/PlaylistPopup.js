@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import useStore from '../store';
 import * as sonosService from '../services/sonosService';
+import {translate} from '../utils/translations';
 
 const PlaylistPopup = () => {
   const visible = useStore((s) => s.playlistPopupVisible);
@@ -21,7 +22,16 @@ const PlaylistPopup = () => {
   const hideQuickPick = useStore((s) => s.hideQuickPick);
   const anchor = useStore((s) => s.popupAnchor);
   const config = useStore((s) => s.config);
+  const showToast = useStore((s) => s.showToast);
   const sonosIp = config.sonos?.ip;
+  const lang = config.language || 'en';
+
+  const reportResult = useCallback(
+    (result) => {
+      if (!result?.ok) showToast(translate('couldNotPlay', lang));
+    },
+    [showToast, lang],
+  );
 
   const isQuickPick = quickPickVisible && quickPick;
   const isPlaylist = visible && playlist;
@@ -53,23 +63,23 @@ const PlaylistPopup = () => {
   const onSelectItem = useCallback(
     async (listItem) => {
       if (!sonosIp) return;
-      if (playlist.type === 'spotify') {
-        await sonosService.playSpotifyURI(sonosIp, listItem[0], config.sonos?.region);
-      } else if (playlist.type === 'radio') {
-        await sonosService.playRadio(sonosIp, listItem[0], listItem[1]);
-      }
       hidePlaylist();
+      if (playlist.type === 'spotify') {
+        reportResult(await sonosService.playSpotifyURI(sonosIp, listItem[0], config.sonos?.region));
+      } else if (playlist.type === 'radio') {
+        reportResult(await sonosService.playRadio(sonosIp, listItem[0], listItem[1]));
+      }
     },
-    [sonosIp, playlist, config.sonos?.region, hidePlaylist],
+    [sonosIp, playlist, config.sonos?.region, hidePlaylist, reportResult],
   );
 
   const onSelectQuickPickItem = useCallback(
     async (item) => {
       if (!sonosIp) return;
-      await sonosService.playFavorite(sonosIp, item);
       hideQuickPick();
+      reportResult(await sonosService.playFavorite(sonosIp, item));
     },
-    [sonosIp, hideQuickPick],
+    [sonosIp, hideQuickPick, reportResult],
   );
 
   if (!isVisible) return null;

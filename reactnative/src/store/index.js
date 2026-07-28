@@ -114,6 +114,14 @@ const useStore = create((set, get) => ({
       },
     })),
 
+  // Transient message shown over the dashboard. The counter makes the same
+  // message re-trigger the auto-dismiss timer when it fires twice in a row
+  toast: null,
+  toastSeq: 0,
+  showToast: (message) =>
+    set((state) => ({toast: {message, seq: state.toastSeq + 1}, toastSeq: state.toastSeq + 1})),
+  hideToast: () => set({toast: null}),
+
   // UI state
   settingsVisible: false,
   newsPopupVisible: false,

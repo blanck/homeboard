@@ -6,6 +6,9 @@ import {fetchWithTimeout} from '../utils/fetchSafe';
 
 const SONOS_PORT = 1400;
 const SONOS_TIMEOUT_MS = 4000;
+// Expanding a large Spotify/service container server-side outlasts the
+// per-call budget the polling requests use
+const ENQUEUE_TIMEOUT_MS = 12000;
 
 // SSDP discovery — find Sonos devices via UDP multicast
 export const discoverSonosDevices = (timeoutMs = 3000) => {
@@ -89,7 +92,7 @@ export const getDeviceDetails = async (ip) => {
   }
 };
 
-const soapRequest = async (ip, path, service, action, body = '') => {
+const soapRequest = async (ip, path, service, action, body = '', timeoutMs = SONOS_TIMEOUT_MS) => {
   const url = `http://${ip}:${SONOS_PORT}${path}`;
   const soapBody = `<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -110,7 +113,7 @@ const soapRequest = async (ip, path, service, action, body = '') => {
       },
       body: soapBody,
     },
-    SONOS_TIMEOUT_MS,
+    timeoutMs,
   );
 
   return await response.text();
@@ -275,19 +278,37 @@ export const getVolume = async (ip) => {
 const isSoapFault = (xml) =>
   typeof xml === 'string' && (xml.includes('UPnPError') || xml.includes(':Fault>'));
 
+// UPnP errorCode of a faulted response, or null when the call succeeded
+const soapFaultCode = (xml) =>
+  isSoapFault(xml) ? extractTag(xml, 'errorCode') || 'unknown' : null;
+
+// 800 is the catch-all the Spotify service returns when it will not expand a
+// container. Observed to come and go for the same playlist, so treat it as a
+// refusal to retry rather than proof the item is unplayable.
+const describeFault = (code) => `UPnP ${code}`;
+
+// Playback result. `reason` is for the log; the UI shows one message either way
+const PLAY_OK = {ok: true};
+const playFailed = (reason) => ({ok: false, reason});
+
 // Switch the device transport to its own queue (node-sonos selectQueue).
 // Reclaims the channel from dead sessions (e.g. a Spotify Connect stream
 // that moved to another device) and breaks the device out of stale groups.
 export const selectQueue = async (ip) => {
   const uuid = await getDeviceUUID(ip);
   if (!uuid) return false;
-  await soapRequest(
+  const result = await soapRequest(
     ip,
     '/MediaRenderer/AVTransport/Control',
     'urn:schemas-upnp-org:service:AVTransport:1',
     'SetAVTransportURI',
     `<InstanceID>0</InstanceID><CurrentURI>x-rincon-queue:${uuid}#0</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
   );
+  const fault = soapFaultCode(result);
+  if (fault) {
+    console.warn('Sonos: cannot select the device queue:', describeFault(fault));
+    return false;
+  }
   return true;
 };
 
@@ -395,7 +416,7 @@ export const playSpotifyURI = async (ip, spotifyUri) => {
   const parts = spotifyUri.split(':');
   if (parts.length < 3 || parts[0] !== 'spotify') {
     console.warn('Bad Spotify URI:', spotifyUri);
-    return;
+    return playFailed('error');
   }
   // Type and id are the LAST two segments: legacy sharing URIs look like
   // spotify:user:<owner>:playlist:<id>, modern ones spotify:playlist:<id>
@@ -405,12 +426,12 @@ export const playSpotifyURI = async (ip, spotifyUri) => {
   const template = await getSpotifyTemplate(ip);
   if (!template) {
     console.warn('Cannot play Spotify: no template — save any Spotify item as a Sonos favorite first');
-    return;
+    return playFailed('error');
   }
 
   const sonosUri = substituteSpotifyId(template.uri, newType, newId);
   const resMD = substituteSpotifyId(template.resMD, newType, newId);
-  await playFavorite(ip, {uri: sonosUri, resMD});
+  return await playFavorite(ip, {uri: sonosUri, resMD});
 };
 
 // Play TuneIn radio
@@ -418,21 +439,32 @@ export const playRadio = async (ip, stationId, stationName) => {
   const uri = `x-sonosapi-stream:${stationId}?sid=254&flags=8224&sn=0`;
   const metadata = `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="F00092020${stationId}" restricted="true"><dc:title>${stationName}</dc:title><upnp:class>object.item.audioItem.audioBroadcast</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON65031_</desc></item></DIDL-Lite>`;
 
-  await soapRequest(
+  const set = await soapRequest(
     ip,
     '/MediaRenderer/AVTransport/Control',
     'urn:schemas-upnp-org:service:AVTransport:1',
     'SetAVTransportURI',
     `<InstanceID>0</InstanceID><CurrentURI>${uri}</CurrentURI><CurrentURIMetaData>${metadata.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</CurrentURIMetaData>`,
   );
+  if (isSoapFault(set)) {
+    const code = soapFaultCode(set);
+    console.warn(`Sonos refused station ${stationId}: ${describeFault(code)}`);
+    return playFailed('refused');
+  }
 
-  await soapRequest(
+  const played = await soapRequest(
     ip,
     '/MediaRenderer/AVTransport/Control',
     'urn:schemas-upnp-org:service:AVTransport:1',
     'Play',
     '<InstanceID>0</InstanceID><Speed>1</Speed>',
   );
+  if (isSoapFault(played)) {
+    const code = soapFaultCode(played);
+    console.warn(`Sonos would not start station ${stationId}: ${describeFault(code)}`);
+    return playFailed('refused');
+  }
+  return PLAY_OK;
 };
 
 // Extract a named attribute from an XML tag string
@@ -710,8 +742,12 @@ export const getDeviceUUID = async (ip) => {
   }
 };
 
-// Play a Sonos favorite (or any item with {uri, resMD?})
+// Play a Sonos favorite (or any item with {uri, resMD?}). Resolves to
+// {ok: false, reason} when the item could not be started, leaving whatever was
+// already queued untouched.
 export const playFavorite = async (ip, favorite) => {
+  const AVT = '/MediaRenderer/AVTransport/Control';
+  const AVS = 'urn:schemas-upnp-org:service:AVTransport:1';
   try {
     const uri = favorite.uri;
     const metadata = favorite.resMD || '';
@@ -722,52 +758,91 @@ export const playFavorite = async (ip, favorite) => {
       uri.startsWith('x-rincon-playlist:') ||
       uri.startsWith('x-sonosapi-hls-static:');
 
-    if (isContainer) {
-      // Select the device queue BEFORE touching it (legacy server.js order:
-      // selectQueue -> flush -> play). Queue edits are rejected while the
-      // transport sits on a foreign/dead session, e.g. after Spotify Connect
-      // moved to another device
-      if (!(await selectQueue(ip))) return;
+    const play = () =>
+      soapRequest(ip, AVT, AVS, 'Play', '<InstanceID>0</InstanceID><Speed>1</Speed>');
 
-      await soapRequest(
+    if (isContainer) {
+      // Select the device queue BEFORE touching it: queue edits are rejected
+      // while the transport sits on a foreign/dead session, e.g. after Spotify
+      // Connect moved to another device
+      if (!(await selectQueue(ip))) return playFailed('error');
+
+      // Append first and only then drop the old tracks. Flushing up front (the
+      // legacy server.js order) left the queue empty whenever the enqueue was
+      // refused, which stranded the dashboard on a blank, unplayable player.
+      // A big container can take a while to expand, so allow more than the
+      // usual per-call budget.
+      const added = await soapRequest(
         ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
-        'RemoveAllTracksFromQueue',
-        '<InstanceID>0</InstanceID>',
-      );
-      await soapRequest(
-        ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
+        AVT,
+        AVS,
         'AddURIToQueue',
         `<InstanceID>0</InstanceID><EnqueuedURI>${encodedUri}</EnqueuedURI><EnqueuedURIMetaData>${metadata}</EnqueuedURIMetaData><DesiredFirstTrackNumberEnqueued>0</DesiredFirstTrackNumberEnqueued><EnqueueAsNext>0</EnqueueAsNext>`,
+        ENQUEUE_TIMEOUT_MS,
       );
+
+      const fault = soapFaultCode(added);
+      if (fault) {
+        console.warn(`Sonos refused to queue ${uri}: ${describeFault(fault)}`);
+        return playFailed('refused');
+      }
+
+      const numAdded = parseInt(extractTag(added, 'NumTracksAdded'), 10) || 0;
+      const firstTrack = parseInt(extractTag(added, 'FirstTrackNumberEnqueued'), 10) || 0;
+      if (numAdded < 1 || firstTrack < 1) {
+        console.warn(`Sonos queued nothing for ${uri} — the item resolved to zero tracks`);
+        return playFailed('empty');
+      }
+
+      if (firstTrack > 1) {
+        await soapRequest(
+          ip,
+          AVT,
+          AVS,
+          'RemoveTrackRangeFromQueue',
+          `<InstanceID>0</InstanceID><UpdateID>0</UpdateID><StartingIndex>1</StartingIndex><NumberOfTracks>${firstTrack - 1}</NumberOfTracks>`,
+        );
+      }
+      // The old tracks are gone, so the new content starts at 1 — but the
+      // transport still points wherever the previous playlist left off
       await soapRequest(
         ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
-        'Play',
-        '<InstanceID>0</InstanceID><Speed>1</Speed>',
+        AVT,
+        AVS,
+        'Seek',
+        '<InstanceID>0</InstanceID><Unit>TRACK_NR</Unit><Target>1</Target>',
       );
-    } else {
-      await soapRequest(
-        ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
-        'SetAVTransportURI',
-        `<InstanceID>0</InstanceID><CurrentURI>${encodedUri}</CurrentURI><CurrentURIMetaData>${metadata}</CurrentURIMetaData>`,
-      );
-      await soapRequest(
-        ip,
-        '/MediaRenderer/AVTransport/Control',
-        'urn:schemas-upnp-org:service:AVTransport:1',
-        'Play',
-        '<InstanceID>0</InstanceID><Speed>1</Speed>',
-      );
+      const played = await play();
+      if (isSoapFault(played)) {
+        const code = soapFaultCode(played);
+        console.warn(`Sonos would not start the queue: ${describeFault(code)}`);
+        return playFailed('refused');
+      }
+      return PLAY_OK;
     }
+
+    const set = await soapRequest(
+      ip,
+      AVT,
+      AVS,
+      'SetAVTransportURI',
+      `<InstanceID>0</InstanceID><CurrentURI>${encodedUri}</CurrentURI><CurrentURIMetaData>${metadata}</CurrentURIMetaData>`,
+    );
+    if (isSoapFault(set)) {
+      const code = soapFaultCode(set);
+      console.warn(`Sonos refused ${uri}: ${describeFault(code)}`);
+      return playFailed('refused');
+    }
+    const played = await play();
+    if (isSoapFault(played)) {
+      const code = soapFaultCode(played);
+      console.warn(`Sonos would not start ${uri}: ${describeFault(code)}`);
+      return playFailed('refused');
+    }
+    return PLAY_OK;
   } catch (err) {
     console.warn('Sonos play favorite error:', err);
+    return playFailed('error');
   }
 };
 
