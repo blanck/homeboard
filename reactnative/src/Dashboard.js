@@ -283,7 +283,8 @@ const Dashboard = () => {
           styles.container,
           {
             paddingTop: 20 + insets.top,
-            paddingBottom: 20 + insets.bottom,
+            // 10 tighter than the top: the extra goes to the middle row
+            paddingBottom: 10 + insets.bottom,
             paddingLeft: 20 + insets.left,
             paddingRight: 20 + insets.right,
           },
@@ -415,10 +416,13 @@ const styles = StyleSheet.create({
     flex: 2.8,
     marginBottom: 8,
   },
-  // Row 2 - 48% height
+  // Row 2 - 48% height, plus a fixed 10 reclaimed from the bottom padding so
+  // the news/calendar/chores cards get taller without shrinking the other rows
   middleRow: {
     flexDirection: 'row',
-    flex: 4.8,
+    flexGrow: 4.8,
+    flexShrink: 1,
+    flexBasis: 10,
     marginBottom: 8,
   },
   // Row 3 - 24% height
