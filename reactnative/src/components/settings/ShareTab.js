@@ -56,6 +56,7 @@ const SECTIONS = [
   {key: 'energy', icon: 'flash'},
   {key: 'news', icon: 'newspaper'},
   {key: 'stocks', icon: 'chart-line'},
+  {key: 'chores', icon: 'broom'},
   {key: 'calendar', icon: 'calendar'},
   {key: 'music', icon: 'music'},
   {key: 'smartDevices', icon: 'devices'},

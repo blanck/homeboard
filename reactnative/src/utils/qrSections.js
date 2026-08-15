@@ -19,6 +19,7 @@ export const buildSectionData = (key, form, secrets = {}) => {
         form.keepAwake ? '1' : '0',
         form.backgroundDayUrl,
         form.backgroundEveningUrl,
+        form.rightModule || 'auto',
       ].join('|');
     case 'weather':
       return [
@@ -62,6 +63,12 @@ export const buildSectionData = (key, form, secrets = {}) => {
       });
     case 'stocks':
       return form.quotes;
+    case 'chores':
+      return JSON.stringify({
+        members: form.choreMembers || [],
+        items: form.choreItems || [],
+        showPoints: form.choresShowPoints !== false ? '1' : '0',
+      });
     case 'calendar':
       return [form.calSharedUrl, form.calHolidayUrl].join('|');
     case 'music':
@@ -101,6 +108,7 @@ export const parseSectionData = (key, data) => {
         keepAwake: p[7] !== '0',
         backgroundDayUrl: p[8] || '',
         backgroundEveningUrl: p[9] || '',
+        rightModule: p[10] || 'auto',
       };
     case 'weather':
       return {
@@ -165,6 +173,18 @@ export const parseSectionData = (key, data) => {
     }
     case 'stocks':
       return {quotes: data};
+    case 'chores': {
+      try {
+        const m = JSON.parse(data);
+        return {
+          choreMembers: m.members || [],
+          choreItems: m.items || [],
+          choresShowPoints: m.showPoints !== '0',
+        };
+      } catch (e) {
+        return {};
+      }
+    }
     case 'calendar':
       return {
         calSharedUrl: p[0] || '',

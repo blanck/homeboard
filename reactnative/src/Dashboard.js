@@ -24,6 +24,7 @@ import ConsumptionWidget from './widgets/ConsumptionWidget';
 import SonosWidget from './widgets/SonosWidget';
 import PlaylistWidget from './widgets/PlaylistWidget';
 import TodoWidget from './widgets/TodoWidget';
+import ChoresWidget from './widgets/ChoresWidget';
 import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 
 // Components
@@ -232,6 +233,25 @@ const Dashboard = () => {
     tibber.currentSubscription.priceInfo &&
     tibber.currentSubscription.priceInfo.today;
 
+  // Middle-right column: pinned by settings, or auto-picked by data
+  const renderRightModule = () => {
+    switch (config.rightModule) {
+      case 'stocks':
+        return hasStocks ? <StocksWidget /> : null;
+      case 'energy':
+        return hasTibberPrices ? <TibberPriceWidget /> : null;
+      case 'todo':
+        return <TodoWidget />;
+      case 'chores':
+        return <ChoresWidget />;
+      default:
+        if (hasStocks) {
+          return <StocksWidget />;
+        }
+        return hasTibberPrices ? <TibberPriceWidget /> : <TodoWidget />;
+    }
+  };
+
   const tibber2 = useStore((s) => s.tibber2);
   const tibberFeed = useStore((s) => s.tibberFeed);
   const hasEnergyWidgets =
@@ -291,11 +311,7 @@ const Dashboard = () => {
           <View style={styles.col30}>
             <CalendarWidget />
           </View>
-          <View style={styles.col35}>
-            {hasStocks ? <StocksWidget /> : null}
-            {!hasStocks && hasTibberPrices ? <TibberPriceWidget /> : null}
-            {!hasStocks && !hasTibberPrices ? <TodoWidget /> : null}
-          </View>
+          <View style={styles.col35}>{renderRightModule()}</View>
         </View>
 
         {/* Row 3: Sonos | Playlists | Home (gauges, thermo, EV) */}

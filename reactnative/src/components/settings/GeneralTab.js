@@ -126,6 +126,14 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
     {label: 'Svenska', value: 'sv'},
   ];
 
+  const rightModuleOptions = [
+    {label: translate('moduleAuto', lang), value: 'auto'},
+    {label: translate('stocks', lang), value: 'stocks'},
+    {label: translate('prices', lang), value: 'energy'},
+    {label: translate('todo', lang), value: 'todo'},
+    {label: translate('chores', lang), value: 'chores'},
+  ];
+
   return (
     <View>
       <Row>
@@ -153,6 +161,19 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
             onValueChange={(v) => updateField('remotezone', v)}
           />
         </View>
+      </Row>
+
+      <Row>
+        <View style={styles.col}>
+          <DropdownPicker
+            label={translate('rightModule', lang)}
+            value={form.rightModule || 'auto'}
+            options={rightModuleOptions}
+            onValueChange={(v) => updateField('rightModule', v)}
+          />
+        </View>
+        <View style={styles.col} />
+        <View style={styles.col} />
       </Row>
 
       <Section title={translate('location', lang)}>

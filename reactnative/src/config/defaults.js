@@ -8,6 +8,16 @@ const defaults = {
 
   quotes: ['^GSPC', '^DJI', '^IXIC', '^RUT', '^OMX', 'SI=F', 'GC=F'],
 
+  // Which module fills the middle-right column: auto picks the first of
+  // stocks / energy prices / todo that has data
+  rightModule: 'auto',
+
+  chores: {
+    members: [], // {id, name, color}
+    items: [], // {id, name, icon, points, assignee, recurrence, days, dayOfMonth}
+    showPoints: true,
+  },
+
   time: {
     localzone: '', // Empty = use device timezone
     remotezone: 'America/Los_Angeles',

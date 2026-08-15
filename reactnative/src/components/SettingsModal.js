@@ -25,6 +25,7 @@ import WeatherTab from './settings/WeatherTab';
 import EnergyTab from './settings/EnergyTab';
 import NewsTab from './settings/NewsTab';
 import StocksTab from './settings/StocksTab';
+import ChoresTab from './settings/ChoresTab';
 import CalendarTab from './settings/CalendarTab';
 import MusicTab from './settings/MusicTab';
 import SmartDevicesTab from './settings/SmartDevicesTab';
@@ -76,6 +77,7 @@ const TABS = [
   {key: 'energy', icon: 'flash'},
   {key: 'news', icon: 'newspaper'},
   {key: 'stocks', icon: 'chart-line'},
+  {key: 'chores', icon: 'broom'},
   {key: 'calendar', icon: 'calendar'},
   {key: 'music', icon: 'music'},
   {key: 'smartDevices', icon: 'devices'},
@@ -155,6 +157,10 @@ const SettingsModal = () => {
         newsCategories: (config.newsapi?.headlines?.categories || []).join(','),
         newsExclude: (config.newsapi?.exclude || []).join(', '),
         quotes: (config.quotes || []).join(', '),
+        rightModule: config.rightModule || 'auto',
+        choreMembers: config.chores?.members || [],
+        choreItems: config.chores?.items || [],
+        choresShowPoints: config.chores?.showPoints !== false,
         sonosIp: config.sonos?.ip || '',
         sonosName: config.sonos?.name || '',
         sonosGroup: config.sonos?.group || '',
@@ -175,8 +181,12 @@ const SettingsModal = () => {
     }
   }, [visible, config]);
 
+  // `value` may be an updater so callers can queue several edits in one tick
   const updateField = (key, value) => {
-    setForm((prev) => ({...prev, [key]: value}));
+    setForm((prev) => ({
+      ...prev,
+      [key]: typeof value === 'function' ? value(prev[key]) : value,
+    }));
   };
 
 
@@ -257,6 +267,12 @@ const SettingsModal = () => {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean),
+      rightModule: form.rightModule || 'auto',
+      chores: {
+        members: (form.choreMembers || []).filter((m) => m.name.trim()),
+        items: (form.choreItems || []).filter((c) => c.name.trim()),
+        showPoints: form.choresShowPoints !== false,
+      },
       sonos: {
         ip: form.sonosIp,
         name: form.sonosName,
@@ -382,6 +398,8 @@ const SettingsModal = () => {
         return <NewsTab {...tabProps} />;
       case 'stocks':
         return <StocksTab {...tabProps} />;
+      case 'chores':
+        return <ChoresTab {...tabProps} />;
       case 'calendar':
         return <CalendarTab {...tabProps} />;
       case 'music':
@@ -452,7 +470,11 @@ const SettingsModal = () => {
               {renderTab()}
             </View>
           ) : (
-            <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag">
               {renderTab()}
             </ScrollView>
           )}
