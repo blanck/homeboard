@@ -75,6 +75,10 @@ const useStore = create((set, get) => ({
   lamarzocco: null,
   setLaMarzocco: (lamarzocco) => set({lamarzocco}),
 
+
+  pool: null,
+  setPool: (pool) => set({pool}),
+
   // Sonos
   sonos: {
     state: null,

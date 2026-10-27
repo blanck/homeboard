@@ -182,6 +182,13 @@ const SettingsModal = () => {
         lmSerialNumber: config.smartDevices?.lamarzocco?.serialNumber || '',
         lmMachineName: config.smartDevices?.lamarzocco?.machineName || '',
         lmShowWidget: config.smartDevices?.lamarzocco?.showWidget !== false,
+        tuyaDevices: config.smartDevices?.tuya?.devices || [],
+        poolHost: config.smartDevices?.pool?.host || '',
+        poolShowWidget: config.smartDevices?.pool?.showWidget !== false,
+        poolPhMin: config.smartDevices?.pool?.phMin ?? '',
+        poolPhMax: config.smartDevices?.pool?.phMax ?? '',
+        poolTempMin: config.smartDevices?.pool?.tempMin ?? '',
+        poolTempMax: config.smartDevices?.pool?.tempMax ?? '',
       });
       setActiveTab('general');
     }
@@ -305,6 +312,17 @@ const SettingsModal = () => {
           serialNumber: form.lmSerialNumber || '',
           machineName: form.lmMachineName || '',
           showWidget: form.lmShowWidget !== false,
+        },
+        tuya: {
+          devices: form.tuyaDevices || [],
+        },
+        pool: {
+          host: form.poolHost || '',
+          showWidget: form.poolShowWidget !== false,
+          phMin: form.poolPhMin ?? '',
+          phMax: form.poolPhMax ?? '',
+          tempMin: form.poolTempMin ?? '',
+          tempMax: form.poolTempMax ?? '',
         },
       },
       background: {dayUrl: form.backgroundDayUrl, eveningUrl: form.backgroundEveningUrl},

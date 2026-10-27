@@ -114,6 +114,17 @@ const defaults = {
       machineName: '',
       showWidget: true,
     },
+    tuya: {
+      devices: [],
+    },
+    pool: {
+      host: '',
+      showWidget: true,
+      phMin: '7.0',
+      phMax: '7.6',
+      tempMin: '',
+      tempMax: '',
+    },
   },
 
   playlist: {},

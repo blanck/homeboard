@@ -16,6 +16,7 @@ import dgram from 'node:dgram';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {exec} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
@@ -158,6 +159,72 @@ const handleProxy = async (req, res, requestUrl) => {
   }
 
   forwardRequest(target, req.method, headers, body, res, 5);
+};
+
+// --- Tuya (DELTACO smart home) ------------------------------------------------
+// Tuya devices announce themselves on UDP 6666/6667. The broadcast is encrypted
+// with a key shipped in every Tuya app, so discovery needs no credentials and
+// yields the device id, ip and protocol version. Controlling a device needs its
+// per-device local key, which only the Tuya account can hand out.
+// Kept in server.mjs rather than its own module because deploy-to-pi.sh only
+// rsyncs this file and start-kiosk.sh.
+
+const TUYA_UDP_PORTS = [6666, 6667];
+const TUYA_BROADCAST_KEY = crypto.createHash('md5').update('yGAdlopoPVldABfn').digest();
+const TUYA_SCAN_MS = 12000;
+
+const tuyaDecryptBroadcast = (buf) => {
+  // 20-byte header, payload, 4-byte crc + 4-byte suffix
+  const payload = buf.subarray(20, buf.length - 8);
+  try {
+    return JSON.parse(payload.toString('utf8'));
+  } catch {}
+  try {
+    const decipher = crypto.createDecipheriv('aes-128-ecb', TUYA_BROADCAST_KEY, null);
+    decipher.setAutoPadding(true);
+    return JSON.parse(Buffer.concat([decipher.update(payload), decipher.final()]).toString('utf8'));
+  } catch {
+    return null;
+  }
+};
+
+const tuyaScan = () =>
+  new Promise((resolve) => {
+    const found = new Map();
+    const sockets = TUYA_UDP_PORTS.map((port) => {
+      const sock = dgram.createSocket({type: 'udp4', reuseAddr: true});
+      sock.on('message', (msg) => {
+        const info = tuyaDecryptBroadcast(msg);
+        if (!info || !info.gwId) return;
+        found.set(info.gwId, {
+          id: info.gwId,
+          ip: info.ip || '',
+          version: info.version || '',
+          productKey: info.productKey || '',
+          encrypted: info.encrypt !== false,
+        });
+      });
+      sock.on('error', () => {});
+      try {
+        sock.bind(port);
+      } catch {}
+      return sock;
+    });
+    setTimeout(() => {
+      for (const sock of sockets) {
+        try {
+          sock.close();
+        } catch {}
+      }
+      resolve([...found.values()]);
+    }, TUYA_SCAN_MS);
+  });
+
+const handleTuyaScan = async (res) => {
+  const devices = await tuyaScan();
+  console.log(new Date().toISOString(), 'tuya scan found', devices.length, 'device(s)');
+  res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
+  res.end(JSON.stringify({devices}));
 };
 
 // --- Background image uploads ------------------------------------------------
@@ -391,6 +458,15 @@ const server = http.createServer((req, res) => {
       return;
     }
     handleSystem(req, res, requestUrl.pathname.slice('/system/'.length));
+    return;
+  }
+  if (requestUrl.pathname === '/tuya/scan') {
+    if (!isPrivateAddress(req.socket.remoteAddress)) {
+      res.writeHead(403);
+      res.end('LAN only');
+      return;
+    }
+    handleTuyaScan(res);
     return;
   }
   if (requestUrl.pathname === '/background') {

@@ -4,19 +4,43 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {translate} from '../../utils/translations';
 import {loginLaMarzocco, clearLaMarzoccoAuth} from '../../services/lamarzoccoService';
 import DropdownPicker from './DropdownPicker';
+import {canScanTuya, scanTuyaDevices, mergeTuyaDevices} from '../../services/tuyaService';
 
 const DEVICE_TYPES = [
   {label: 'None', value: ''},
   {label: 'La Marzocco', value: 'lamarzocco'},
 ];
 
-const SmartDevicesTab = ({form, updateField, lang, Section, Field}) => {
+const SmartDevicesTab = ({form, updateField, lang, Section, Field, Row}) => {
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [machines, setMachines] = useState([]);
+  const [tuyaScanning, setTuyaScanning] = useState(false);
+  const [tuyaError, setTuyaError] = useState('');
+
+  const tuyaDevices = form.tuyaDevices || [];
+
+  const updateTuyaDevice = (id, field, value) =>
+    updateField(
+      'tuyaDevices',
+      (current = []) => (current || []).map((d) => (d.id === id ? {...d, [field]: value} : d)),
+    );
+
+  const handleTuyaScan = async () => {
+    setTuyaError('');
+    setTuyaScanning(true);
+    try {
+      const found = await scanTuyaDevices();
+      updateField('tuyaDevices', (current = []) => mergeTuyaDevices(current || [], found));
+      if (!found.length) setTuyaError(translate('tuyaNoDevices', lang));
+    } catch (err) {
+      setTuyaError(err.message);
+    }
+    setTuyaScanning(false);
+  };
 
   const selectedDevice = form.smartDeviceType || '';
   const hasLM = selectedDevice === 'lamarzocco';
@@ -116,6 +140,121 @@ const SmartDevicesTab = ({form, updateField, lang, Section, Field}) => {
           )}
         </Section>
       )}
+
+      {canScanTuya() ? (
+        <Section title={translate('tuya', lang)}>
+          <Text style={styles.hint}>{translate('tuyaHint', lang)}</Text>
+          <TouchableOpacity
+            style={styles.loginBtn}
+            disabled={tuyaScanning}
+            onPress={handleTuyaScan}>
+            <Icon name="lan-connect" size={16} color="#fff" style={styles.btnIcon} />
+            <Text style={styles.loginText}>
+              {tuyaScanning ? translate('scanning', lang) : translate('scanNetwork', lang)}
+            </Text>
+          </TouchableOpacity>
+          {tuyaError ? <Text style={styles.error}>{tuyaError}</Text> : null}
+          {tuyaDevices.map((device) => (
+            <View key={device.id} style={styles.deviceCard}>
+              <View style={styles.deviceHeader}>
+                <Icon
+                  name="lightbulb-outline"
+                  size={20}
+                  color={device.localKey ? '#3fcf40' : '#666'}
+                />
+                <View style={styles.deviceInfo}>
+                  <Text style={styles.deviceName}>{device.name || device.id}</Text>
+                  <Text style={styles.deviceSerial}>
+                    {device.ip} · v{device.version}
+                  </Text>
+                </View>
+              </View>
+              <Field
+                label={translate('deviceName', lang)}
+                value={device.name}
+                onChangeText={(v) => updateTuyaDevice(device.id, 'name', v)}
+                placeholder={device.id}
+              />
+              <Field
+                label={translate('localKey', lang)}
+                value={device.localKey}
+                onChangeText={(v) => updateTuyaDevice(device.id, 'localKey', v)}
+                placeholder="................"
+              />
+            </View>
+          ))}
+        </Section>
+      ) : null}
+
+      <Section title={translate('pool', lang)}>
+        <Field
+          label={translate('poolHost', lang)}
+          value={form.poolHost}
+          onChangeText={(v) => updateField('poolHost', v)}
+          placeholder="192.168.1.250"
+        />
+        <Text style={styles.hint}>{translate('poolHostHint', lang)}</Text>
+        {form.poolHost ? (
+          <>
+            <View style={styles.deviceCard}>
+              <View style={styles.deviceHeader}>
+                <Icon
+                  name="pool"
+                  size={20}
+                  color={form.poolShowWidget !== false ? '#4fc3f7' : '#666'}
+                />
+                <View style={styles.deviceInfo}>
+                  <Text style={styles.deviceName}>{translate('pool', lang)}</Text>
+                  <Text style={styles.deviceSerial}>{form.poolHost}</Text>
+                </View>
+                <Switch
+                  value={form.poolShowWidget !== false}
+                  onValueChange={(v) => updateField('poolShowWidget', v)}
+                  trackColor={{false: '#444', true: '#3fcf40'}}
+                  thumbColor="#fff"
+                />
+              </View>
+            </View>
+            <Text style={styles.thresholdTitle}>
+              {translate('poolThresholds', lang)}
+            </Text>
+            <Row>
+              <Field
+                half
+                label={translate('phMin', lang)}
+                value={form.poolPhMin}
+                onChangeText={(v) => updateField('poolPhMin', v)}
+                placeholder="7.0"
+                keyboardType="numeric"
+              />
+              <Field
+                half
+                label={translate('phMax', lang)}
+                value={form.poolPhMax}
+                onChangeText={(v) => updateField('poolPhMax', v)}
+                placeholder="7.6"
+                keyboardType="numeric"
+              />
+            </Row>
+            <Row>
+              <Field
+                half
+                label={translate('tempMin', lang)}
+                value={form.poolTempMin}
+                onChangeText={(v) => updateField('poolTempMin', v)}
+                keyboardType="numeric"
+              />
+              <Field
+                half
+                label={translate('tempMax', lang)}
+                value={form.poolTempMax}
+                onChangeText={(v) => updateField('poolTempMax', v)}
+                keyboardType="numeric"
+              />
+            </Row>
+          </>
+        ) : null}
+      </Section>
 
       {/* Login Modal */}
       <Modal
@@ -217,6 +356,12 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
     marginBottom: 8,
+  },
+  thresholdTitle: {
+    color: '#aaaaaa',
+    fontSize: 12,
+    marginTop: 12,
+    marginBottom: 6,
   },
   loginBtn: {
     flexDirection: 'row',

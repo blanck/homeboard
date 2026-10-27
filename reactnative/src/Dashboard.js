@@ -28,6 +28,7 @@ import ChoresWidget from './widgets/ChoresWidget';
 import CountdownWidget from './widgets/CountdownWidget';
 import HeadlinesWidget, {HEADLINE_COUNT} from './widgets/HeadlinesWidget';
 import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
+import PoolWidget from './widgets/PoolWidget';
 
 // Components
 import SettingsModal from './components/SettingsModal';
@@ -44,6 +45,7 @@ import {fetchQuotes} from './services/stockService';
 import {fetchCalendar} from './services/calendarService';
 import {fetchTibberPrices, fetchTibberDevices, createTibberFeed} from './services/tibberService';
 import {fetchLaMarzoccoStatus} from './services/lamarzoccoService';
+import {fetchPoolStatus} from './services/poolService';
 
 // Background images
 import bgBeach from './assets/images/beach.jpg';
@@ -60,10 +62,12 @@ const Dashboard = () => {
   const reportFetch = useStore((s) => s.reportFetch);
   const setTibberFeed = useStore((s) => s.setTibberFeed);
   const setLaMarzocco = useStore((s) => s.setLaMarzocco);
+  const setPool = useStore((s) => s.setPool);
   const setSettingsVisible = useStore((s) => s.setSettingsVisible);
   const tibber = useStore((s) => s.tibber);
   const quotes = useStore((s) => s.quotes);
   const lamarzocco = useStore((s) => s.lamarzocco);
+  const pool = useStore((s) => s.pool);
 
   const isTibberEnabled = config.energyProvider === 'tibber' || (config.energyProvider === undefined && !!config.tibber1?.apiEndpoint?.apiKey);
   const isOnline = useIsOnline();
@@ -123,7 +127,16 @@ const Dashboard = () => {
       console.warn('Stocks error:', err);
       reportFetch('quotes', null, false);
     }
-  }, [config, setWeather, setCurrentCondition, setArticles, reportFetch]);
+    try {
+      const poolCfg = config.smartDevices?.pool;
+      if (poolCfg?.host && poolCfg.showWidget !== false) {
+        const status = await fetchPoolStatus(poolCfg.host);
+        if (status) setPool(status);
+      }
+    } catch (err) {
+      console.warn('Pool error:', err);
+    }
+  }, [config, setWeather, setCurrentCondition, setArticles, reportFetch, setPool]);
 
   usePolling(fetchMinutely, minuteInterval, configLoaded);
 
@@ -276,7 +289,9 @@ const Dashboard = () => {
     (tibberFeed && tibberFeed.power));
   const lmWidgetEnabled = config.smartDevices?.lamarzocco?.showWidget !== false;
   const hasLaMarzocco = !!lamarzocco && lmWidgetEnabled;
-  const hasHomeWidgets = hasEnergyWidgets || hasLaMarzocco;
+  const poolWidgetEnabled = config.smartDevices?.pool?.showWidget !== false;
+  const hasPool = !!pool && poolWidgetEnabled;
+  const hasHomeWidgets = hasEnergyWidgets || hasLaMarzocco || hasPool;
 
   // Background: custom URL per time of day, fallback to bundled defaults
   const isEvening = hour >= 19 || hour < 7;
@@ -381,6 +396,11 @@ const Dashboard = () => {
                 {hasLaMarzocco ? (
                   <View style={styles.homeCard}>
                     <LaMarzoccoWidget />
+                  </View>
+                ) : null}
+                {hasPool ? (
+                  <View style={styles.homeCard}>
+                    <PoolWidget />
                   </View>
                 ) : null}
               </View>
