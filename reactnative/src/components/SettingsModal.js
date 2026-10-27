@@ -19,6 +19,7 @@ import {translate} from '../utils/translations';
 import defaults from '../config/defaults';
 import {fetchNews} from '../services/newsService';
 import {fetchTibberPrices, fetchTibberDevices} from '../services/tibberService';
+import {fetchLaMarzoccoStatus} from '../services/lamarzoccoService';
 import GeneralTab from './settings/GeneralTab';
 import WeatherTab from './settings/WeatherTab';
 import EnergyTab from './settings/EnergyTab';
@@ -92,6 +93,7 @@ const SettingsModal = () => {
   const setArticles = useStore((s) => s.setArticles);
   const setTibber = useStore((s) => s.setTibber);
   const setTibber2 = useStore((s) => s.setTibber2);
+  const setLaMarzocco = useStore((s) => s.setLaMarzocco);
   const requestRefresh = useStore((s) => s.requestRefresh);
   const lang = config.language || 'en';
 
@@ -403,6 +405,15 @@ const SettingsModal = () => {
       fetchNews(newConfig).then((articles) => {
         if (articles) setArticles(articles);
       }).catch(() => {});
+    }
+
+    // Hourly poll would leave a freshly connected machine hidden for up to an
+    // hour; a re-login keeps the same serial, so fetch on every save
+    const lmSerial = newConfig.smartDevices.lamarzocco.serialNumber;
+    if (lmSerial && newConfig.smartDevices.lamarzocco.showWidget) {
+      fetchLaMarzoccoStatus(lmSerial)
+        .then((lm) => lm && setLaMarzocco(lm))
+        .catch(() => {});
     }
 
     // Re-fetch tibber data with new config

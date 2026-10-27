@@ -16,6 +16,9 @@ function getCrypto() {
 const BASE_URL = 'https://lion.lamarzocco.io/api/customer-app';
 const INSTALL_KEY = 'lamarzocco_install_key';
 const TOKEN_KEY = 'lamarzocco_tokens';
+// Refresh tokens lapse after a while offline; the cloud app re-signs in with
+// the stored login, and so do we, instead of silently dropping the widget
+const CREDENTIALS_KEY = 'lamarzocco_credentials';
 
 // --- Helpers ---
 
@@ -251,6 +254,24 @@ async function registerClient(installKey) {
 
 // --- Public API ---
 
+async function signIn(installKey, email, password) {
+  const res = await fetch(`${BASE_URL}/auth/signin`, {
+    method: 'POST',
+    headers: createAuthHeaders(installKey),
+    body: JSON.stringify({username: email, password}),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const tokens = {
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    username: email,
+    savedAt: Date.now(),
+  };
+  await saveTokens(tokens);
+  return tokens;
+}
+
 export async function loginLaMarzocco(email, password) {
   // Always generate fresh key on login to ensure clean state
   await EncryptedStorage.removeItem(INSTALL_KEY);
@@ -317,7 +338,19 @@ export async function loginLaMarzocco(email, password) {
     });
   }
 
+  await EncryptedStorage.setItem(CREDENTIALS_KEY, JSON.stringify({email, password}));
   return await fetchMachines();
+}
+
+async function signInAgain(installKey) {
+  try {
+    const str = await EncryptedStorage.getItem(CREDENTIALS_KEY);
+    if (!str) return null;
+    const {email, password} = JSON.parse(str);
+    return await signIn(installKey, email, password);
+  } catch {
+    return null;
+  }
 }
 
 async function getValidToken() {
@@ -348,6 +381,10 @@ async function getValidToken() {
         await saveTokens(newTokens);
         return {installKey, token: newTokens.accessToken};
       }
+      const fresh = await signInAgain(installKey);
+      if (fresh) return {installKey, token: fresh.accessToken};
+      console.warn('La Marzocco: refresh failed', res.status, '- log in again from Phone setup');
+      if (res.status >= 400 && res.status < 500) await EncryptedStorage.removeItem(TOKEN_KEY);
     } catch {}
     return null;
   }
@@ -374,17 +411,25 @@ export async function fetchMachines() {
     }));
 }
 
+export const hasLaMarzoccoLogin = async () => !!(await loadTokens());
+
 export async function fetchLaMarzoccoStatus(serialNumber) {
   if (!serialNumber) return null;
 
   const auth = await getValidToken();
-  if (!auth) return null;
+  if (!auth) {
+    console.warn('La Marzocco: not logged in');
+    return null;
+  }
 
   const headers = createAuthHeaders(auth.installKey, auth.token);
   const res = await fetch(`${BASE_URL}/things/${serialNumber}/dashboard`, {
     headers,
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn('La Marzocco: dashboard request failed', res.status);
+    return null;
+  }
 
   const data = await res.json();
   const widgets = data.widgets || [];
@@ -443,5 +488,6 @@ export async function clearLaMarzoccoAuth() {
   try {
     await EncryptedStorage.removeItem(INSTALL_KEY);
     await EncryptedStorage.removeItem(TOKEN_KEY);
+    await EncryptedStorage.removeItem(CREDENTIALS_KEY);
   } catch {}
 }
