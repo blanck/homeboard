@@ -160,12 +160,69 @@ const handleProxy = async (req, res, requestUrl) => {
   forwardRequest(target, req.method, headers, body, res, 5);
 };
 
+// --- Background image uploads ------------------------------------------------
+// Phones pick a photo instead of hunting for a URL. The image is downscaled in
+// the browser before it gets here, so this only needs to accept a small JPEG,
+// write it under uploads/ and hand back a same-origin path for the settings.
+
+const UPLOAD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads');
+const UPLOAD_SLOTS = new Set(['day', 'evening', 'countdown']);
+const UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
+const UPLOAD_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'};
+
+const handleUpload = (req, res, requestUrl) => {
+  const slot = requestUrl.searchParams.get('slot') || '';
+  const ext = UPLOAD_TYPES[(req.headers['content-type'] || '').split(';')[0].trim()];
+  if (!UPLOAD_SLOTS.has(slot) || !ext) {
+    res.writeHead(400);
+    res.end('bad slot or content-type');
+    return;
+  }
+  const chunks = [];
+  let size = 0;
+  let aborted = false;
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > UPLOAD_MAX_BYTES) {
+      aborted = true;
+      res.writeHead(413);
+      res.end('too large');
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+  req.on('end', () => {
+    if (aborted) return;
+    try {
+      fs.mkdirSync(UPLOAD_DIR, {recursive: true});
+      // Same name per slot, cache-busted by the query the client stores
+      for (const stale of fs.readdirSync(UPLOAD_DIR)) {
+        if (stale.startsWith(`${slot}.`)) fs.unlinkSync(path.join(UPLOAD_DIR, stale));
+      }
+      fs.writeFileSync(path.join(UPLOAD_DIR, slot + ext), Buffer.concat(chunks));
+    } catch (err) {
+      console.warn('background upload failed:', err.message);
+      res.writeHead(500);
+      res.end();
+      return;
+    }
+    console.log(new Date().toISOString(), 'background upload', slot, size, 'bytes');
+    res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
+    res.end(JSON.stringify({url: `/uploads/${slot}${ext}?v=${Date.now()}`}));
+  });
+};
+
 const serveStatic = (req, res, requestUrl) => {
   let filePath = decodeURIComponent(requestUrl.pathname);
   // OAuth redirects land on /oauth/*; serve the app and let it handle the code
   if (filePath === '/' || filePath.startsWith('/oauth/')) filePath = '/index.html';
-  const resolved = path.join(DIST, filePath);
-  if (!resolved.startsWith(DIST)) {
+  // Root uploads at UPLOAD_DIR itself, not its parent, or /uploads/../ would
+  // reach settings-store.json
+  const isUpload = filePath.startsWith('/uploads/');
+  const root = isUpload ? UPLOAD_DIR : DIST;
+  const resolved = path.join(root, isUpload ? filePath.slice('/uploads'.length) : filePath);
+  if (!resolved.startsWith(root)) {
     res.writeHead(403);
     res.end();
     return;
@@ -334,6 +391,20 @@ const server = http.createServer((req, res) => {
       return;
     }
     handleSystem(req, res, requestUrl.pathname.slice('/system/'.length));
+    return;
+  }
+  if (requestUrl.pathname === '/background') {
+    if (!isPrivateAddress(req.socket.remoteAddress)) {
+      res.writeHead(403);
+      res.end('LAN only');
+      return;
+    }
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
+    handleUpload(req, res, requestUrl);
     return;
   }
   if (requestUrl.pathname === '/proxy' || requestUrl.pathname === '/legacy-config') {

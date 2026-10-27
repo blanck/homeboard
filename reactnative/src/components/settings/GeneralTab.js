@@ -12,6 +12,7 @@ import {
   FlatList,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
+import {canPickBackground, pickImage, uploadBackground} from '../../utils/backgroundUpload';
 import {translate} from '../../utils/translations';
 import DropdownPicker from './DropdownPicker';
 
@@ -44,6 +45,27 @@ const systemAction = (action, confirmMsg) => {
 };
 
 const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
+  const [bgUploading, setBgUploading] = useState('');
+  const [bgError, setBgError] = useState('');
+  const [bgPicked, setBgPicked] = useState('');
+
+  const chooseBackground = async (slot, field) => {
+    setBgError('');
+    setBgPicked('');
+    // Pick first, then show progress: the old order claimed to be uploading
+    // while the picker was still open, and hung there if it was dismissed
+    const file = await pickImage();
+    if (!file) return;
+    setBgUploading(slot);
+    try {
+      const url = await uploadBackground(file, slot);
+      updateField(field, url);
+      setBgPicked(slot);
+    } catch (err) {
+      setBgError(err.message);
+    }
+    setBgUploading('');
+  };
   const [searchQuery, setSearchQuery] = useState(form.locationName || '');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -133,6 +155,7 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
     {label: translate('todo', lang), value: 'todo'},
     {label: translate('topStories', lang), value: 'headlines'},
     {label: translate('chores', lang), value: 'chores'},
+    {label: translate('countdown', lang), value: 'countdown'},
   ];
 
   return (
@@ -176,6 +199,50 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
         <View style={styles.col} />
         <View style={styles.col} />
       </Row>
+
+      {form.rightModule === 'countdown' ? (
+        <Section title={translate('countdown', lang)}>
+          <View style={styles.inlineFields}>
+            <Field
+              half
+              label={translate('countdownTitle', lang)}
+              value={form.countdownTitle}
+              onChangeText={(v) => updateField('countdownTitle', v)}
+              placeholder="Thailand"
+            />
+            <Field
+              half
+              label={translate('countdownDate', lang)}
+              value={form.countdownDate}
+              onChangeText={(v) => updateField('countdownDate', v)}
+              placeholder="2026-11-16"
+            />
+            <Field
+              half
+              label={translate('countdownTime', lang)}
+              value={form.countdownTime}
+              onChangeText={(v) => updateField('countdownTime', v)}
+              placeholder="14:30"
+            />
+          </View>
+          <Field
+            label={translate('countdownImage', lang)}
+            value={form.countdownImageUrl}
+            onChangeText={(v) => updateField('countdownImageUrl', v)}
+            placeholder="https://"
+          />
+          {canPickBackground() ? (
+            <TouchableOpacity
+              style={styles.pickBtn}
+              disabled={!!bgUploading}
+              onPress={() => chooseBackground('countdown', 'countdownImageUrl')}>
+              <Text style={styles.pickBtnText}>
+                {bgUploading === 'countdown' ? translate('uploading', lang) : translate('choosePhoto', lang)}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </Section>
+      ) : null}
 
       <Section title={translate('location', lang)}>
         <View style={styles.searchRow}>
@@ -284,12 +351,34 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
           onChangeText={(v) => updateField('backgroundDayUrl', v)}
           placeholder={translate('backgroundHint', lang)}
         />
+        {canPickBackground() ? (
+          <TouchableOpacity
+            style={styles.pickBtn}
+            disabled={!!bgUploading}
+            onPress={() => chooseBackground('day', 'backgroundDayUrl')}>
+            <Text style={styles.pickBtnText}>
+              {bgUploading === 'day' ? translate('uploading', lang) : translate('choosePhoto', lang)}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <Field
           label={translate('backgroundEvening', lang)}
           value={form.backgroundEveningUrl}
           onChangeText={(v) => updateField('backgroundEveningUrl', v)}
           placeholder={translate('backgroundHint', lang)}
         />
+        {canPickBackground() ? (
+          <TouchableOpacity
+            style={styles.pickBtn}
+            disabled={!!bgUploading}
+            onPress={() => chooseBackground('evening', 'backgroundEveningUrl')}>
+            <Text style={styles.pickBtnText}>
+              {bgUploading === 'evening' ? translate('uploading', lang) : translate('choosePhoto', lang)}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        {bgPicked ? <Text style={styles.bgOk}>{translate('photoReady', lang)}</Text> : null}
+        {bgError ? <Text style={styles.bgError}>{bgError}</Text> : null}
       </Section>
 
       {Platform.OS === 'web' ? (
@@ -327,6 +416,33 @@ const styles = StyleSheet.create({
   systemRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  inlineFields: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  pickBtn: {
+    backgroundColor: '#3a3a3a',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  pickBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  bgOk: {
+    color: '#3fcf40',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  bgError: {
+    color: '#ff6666',
+    fontSize: 12,
+    marginBottom: 8,
   },
   systemBtn: {
     backgroundColor: '#3a3a3a',

@@ -160,6 +160,10 @@ const SettingsModal = () => {
         newsExclude: (config.newsapi?.exclude || []).join(', '),
         quotes: (config.quotes || []).join(', '),
         rightModule: config.rightModule || 'auto',
+        countdownTitle: config.countdown?.title || '',
+        countdownDate: config.countdown?.date || '',
+        countdownTime: config.countdown?.time || '',
+        countdownImageUrl: config.countdown?.imageUrl || '',
         choreMembers: config.chores?.members || [],
         choreItems: config.chores?.items || [],
         choresShowPoints: config.chores?.showPoints !== false,
@@ -275,6 +279,12 @@ const SettingsModal = () => {
         .map((s) => s.trim())
         .filter(Boolean),
       rightModule: form.rightModule || 'auto',
+      countdown: {
+        title: (form.countdownTitle || '').trim(),
+        date: (form.countdownDate || '').trim(),
+        time: (form.countdownTime || '').trim(),
+        imageUrl: (form.countdownImageUrl || '').trim(),
+      },
       chores: {
         members: (form.choreMembers || []).filter((m) => m.name.trim()),
         items: (form.choreItems || []).filter((c) => c.name.trim()),

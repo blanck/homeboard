@@ -25,6 +25,7 @@ import SonosWidget from './widgets/SonosWidget';
 import PlaylistWidget from './widgets/PlaylistWidget';
 import TodoWidget from './widgets/TodoWidget';
 import ChoresWidget from './widgets/ChoresWidget';
+import CountdownWidget from './widgets/CountdownWidget';
 import HeadlinesWidget, {HEADLINE_COUNT} from './widgets/HeadlinesWidget';
 import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 
@@ -255,6 +256,8 @@ const Dashboard = () => {
         return <ChoresWidget />;
       case 'headlines':
         return <HeadlinesWidget />;
+      case 'countdown':
+        return <CountdownWidget />;
       default:
         if (hasStocks) {
           return <StocksWidget />;

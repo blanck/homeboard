@@ -20,6 +20,10 @@ export const buildSectionData = (key, form, secrets = {}) => {
         form.backgroundDayUrl,
         form.backgroundEveningUrl,
         form.rightModule || 'auto',
+        form.countdownTitle,
+        form.countdownDate,
+        form.countdownImageUrl,
+        form.countdownTime,
       ].join('|');
     case 'weather':
       return [
@@ -109,6 +113,10 @@ export const parseSectionData = (key, data) => {
         backgroundDayUrl: p[8] || '',
         backgroundEveningUrl: p[9] || '',
         rightModule: p[10] || 'auto',
+        countdownTitle: p[11] || '',
+        countdownDate: p[12] || '',
+        countdownImageUrl: p[13] || '',
+        countdownTime: p[14] || '',
       };
     case 'weather':
       return {
