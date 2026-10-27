@@ -403,8 +403,16 @@ const SYSTEM_COMMANDS = {
   // events, so a DPMS-slept panel can never be woken by touch. Screensaver
   // blanking keeps the monitor awake showing black (tvservice -p keeps HDMI
   // powered), and X natively unblanks on any input.
-  sleep: 'export DISPLAY=:0; sleep 1; xset -display :0.0 s activate; /usr/bin/tvservice -p',
-  wake: 'export DISPLAY=:0; xset -display :0.0 s off; xset -display :0.0 dpms force on; xset -display :0.0 -dpms',
+  // Blank via the X screensaver, NOT DPMS off: when this monitor powers down it
+  // stops delivering touch events, so a DPMS-slept panel can never be woken by
+  // touch. DPMS is disabled outright, so HDMI stays powered and `tvservice -p`
+  // is unnecessary here; running it after `s activate` re-syncs HDMI and
+  // instantly un-blanks, which showed up as a black flash every minute.
+  sleep: 'export DISPLAY=:0; xset -display :0.0 s activate',
+  // `s reset` is what actually un-blanks a screensaver-blanked screen. No
+  // tvservice here either: re-syncing HDMI blanks the panel for about a second,
+  // which showed up as a flash on every touch (wake fires on any touch).
+  wake: 'export DISPLAY=:0; xset -display :0.0 s reset; xset -display :0.0 s off; xset -display :0.0 -dpms',
   // Raspberry Pi OS default user has passwordless sudo
   reboot: 'sudo reboot',
 };
@@ -449,6 +457,87 @@ const handleSystem = (req, res, action) => {
   res.end('{"ok":true}');
 };
 
+// --- Shared settings store --------------------------------------------------
+// Settings normally live in each browser's localStorage, which would mean a
+// phone configuring itself instead of the wall display. These keys are kept
+// server-side so every browser on the LAN edits one config. Device-scoped
+// keys (device id/name, Sonos uuid) deliberately stay per-browser.
+// Secrets land in this file in plaintext: same trust stance as LAN sync,
+// LAN-only and never port-forwarded.
+
+const STORE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'settings-store.json');
+const STORE_KEYS = new Set([
+  'homeboard_settings',
+  'homeboard_secrets',
+  'spotify_tokens',
+  'tibber_data_api_tokens',
+  'lamarzocco_tokens',
+  'lamarzocco_install_key',
+]);
+
+const readStore = () => {
+  try {
+    return JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
+  } catch {
+    return {rev: 0, values: {}};
+  }
+};
+
+const writeStore = (store) => {
+  // Write-then-rename so a yanked power cord cannot leave a half-written file
+  const tmp = STORE_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(store));
+  fs.renameSync(tmp, STORE_FILE);
+};
+
+const handleStore = (req, res, requestUrl) => {
+  const key = requestUrl.searchParams.get('key') || '';
+
+  if (requestUrl.pathname === '/store-rev') {
+    res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
+    res.end(JSON.stringify({rev: readStore().rev || 0}));
+    return;
+  }
+  if (!STORE_KEYS.has(key)) {
+    res.writeHead(400);
+    res.end('unknown key');
+    return;
+  }
+  if (req.method === 'GET') {
+    const value = readStore().values[key];
+    res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
+    res.end(JSON.stringify({value: value === undefined ? null : value}));
+    return;
+  }
+  if (req.method === 'POST' || req.method === 'DELETE') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 2 * 1024 * 1024) req.destroy();
+    });
+    req.on('end', () => {
+      const store = readStore();
+      if (req.method === 'DELETE') delete store.values[key];
+      else store.values[key] = body;
+      store.rev = (store.rev || 0) + 1;
+      try {
+        writeStore(store);
+      } catch (err) {
+        console.warn('settings store write failed:', err.message);
+        res.writeHead(500);
+        res.end();
+        return;
+      }
+      console.log(new Date().toISOString(), 'store', req.method, key, 'rev', store.rev);
+      res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
+      res.end(JSON.stringify({rev: store.rev}));
+    });
+    return;
+  }
+  res.writeHead(405);
+  res.end();
+};
+
 const server = http.createServer((req, res) => {
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (requestUrl.pathname.startsWith('/system/')) {
@@ -481,6 +570,15 @@ const server = http.createServer((req, res) => {
       return;
     }
     handleUpload(req, res, requestUrl);
+    return;
+  }
+  if (requestUrl.pathname === '/store' || requestUrl.pathname === '/store-rev') {
+    if (!isPrivateAddress(req.socket.remoteAddress)) {
+      res.writeHead(403);
+      res.end('LAN only');
+      return;
+    }
+    handleStore(req, res, requestUrl);
     return;
   }
   if (requestUrl.pathname === '/proxy' || requestUrl.pathname === '/legacy-config') {

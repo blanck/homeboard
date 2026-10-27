@@ -31,3 +31,43 @@ export const openOAuthUrl = async (url) => {
     }
   }, 1000);
 };
+
+// Mobile browsers only allow window.open inside the tap that triggered it.
+// Building the authorize URL needs crypto.subtle, whose await breaks that
+// chain, so open the window first and point it at the URL once it is ready.
+// Without this the popup is blocked, the forwarder finds no opener, and a
+// phone gets sent to localhost:8080 (itself) instead of back to the app.
+export const openOAuthWindow = () => {
+  if (Platform.OS !== 'web') {
+    return {
+      navigate: (url) => Linking.openURL(url),
+      close: () => {},
+    };
+  }
+  const popup = window.open('', 'homeboard-oauth');
+  if (popup) {
+    const timer = setTimeout(() => {
+      try {
+        if (!popup.closed) popup.close();
+      } catch {}
+    }, POPUP_TIMEOUT_MS);
+    const poll = setInterval(() => {
+      if (popup.closed) {
+        clearTimeout(timer);
+        clearInterval(poll);
+      }
+    }, 1000);
+  }
+  return {
+    navigate: (url) => {
+      if (popup && !popup.closed) popup.location.replace(url);
+      // Popup blocked anyway: same-tab navigation still completes the flow
+      else window.location.assign(url);
+    },
+    close: () => {
+      try {
+        if (popup && !popup.closed) popup.close();
+      } catch {}
+    },
+  };
+};

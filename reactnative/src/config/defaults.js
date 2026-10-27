@@ -132,6 +132,9 @@ const defaults = {
 
   background: {dayUrl: '', eveningUrl: ''},
   keepAwake: true,
+  // Kiosks with a touchscreen but no OS keyboard (e.g. Raspbian on X11) need
+  // the in-app one; anything with a native keyboard should leave this off.
+  showOnScreenKeyboard: false,
 };
 
 export default defaults;

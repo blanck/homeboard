@@ -311,6 +311,18 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
         </Row>
       </Section>
 
+      {Platform.OS === 'web' ? (
+        <View style={styles.sleepRow}>
+          <Switch
+            value={form.showOnScreenKeyboard === true}
+            onValueChange={(v) => updateField('showOnScreenKeyboard', v)}
+            trackColor={{false: '#333', true: '#1B4781'}}
+            thumbColor="#ffffff"
+          />
+          <Text style={styles.sleepLabel}>{translate('onScreenKeyboard', lang)}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.sleepRow}>
         <Switch
           value={form.keepAwake}

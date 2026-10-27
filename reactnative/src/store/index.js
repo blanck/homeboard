@@ -75,6 +75,10 @@ const useStore = create((set, get) => ({
   lamarzocco: null,
   setLaMarzocco: (lamarzocco) => set({lamarzocco}),
 
+  // Only the kiosk may drive the physical panel: a phone or a desktop preview
+  // rendering the same dashboard must not sleep/wake the wall display
+  isKioskDisplay: true,
+  setIsKioskDisplay: (isKioskDisplay) => set({isKioskDisplay}),
 
   pool: null,
   setPool: (pool) => set({pool}),

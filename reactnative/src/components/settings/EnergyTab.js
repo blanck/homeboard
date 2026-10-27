@@ -1,11 +1,12 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {View, Text, StyleSheet, Linking, TouchableOpacity, ActivityIndicator, Switch} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {translate} from '../../utils/translations';
 import {fetchTibberHomes} from '../../services/tibberService';
 import {fetchDataApiDevices} from '../../services/tibberService';
 import {startOAuthFlow, isDataApiConnected, clearTokens} from '../../services/tibberOAuthService';
-import {openOAuthUrl} from '../../utils/oauthPopup';
+import {openOAuthWindow} from '../../utils/oauthPopup';
+import {useNativeClick, nativeOnlyPress} from '../../utils/nativeClick';
 import useStore from '../../store';
 import DropdownPicker from './DropdownPicker';
 
@@ -63,11 +64,16 @@ const EnergyTab = ({form, updateField, lang, Section, Field}) => {
     setLoadingHomes(false);
   };
 
+  const connectBtnRef = useRef(null);
+  useNativeClick(connectBtnRef, () => handleConnect());
+
   const handleConnect = async () => {
+    const oauth = openOAuthWindow();
     try {
       const url = await startOAuthFlow();
-      await openOAuthUrl(url);
+      oauth.navigate(url);
     } catch (err) {
+      oauth.close();
       console.warn('OAuth start error:', err);
     }
   };
@@ -288,7 +294,10 @@ const EnergyTab = ({form, updateField, lang, Section, Field}) => {
               ) : (
                 <>
                   <Text style={styles.hint}>{translate('tibberOAuthHint', lang)}</Text>
-                  <TouchableOpacity style={styles.tokenBtn} onPress={handleConnect}>
+                  <TouchableOpacity
+          ref={connectBtnRef}
+          style={styles.tokenBtn}
+          onPress={nativeOnlyPress(handleConnect)}>
                     <Icon name="link" size={16} color="#cccccc" />
                     <Text style={styles.tokenBtnText}>{translate('connectTibber', lang)}</Text>
                   </TouchableOpacity>

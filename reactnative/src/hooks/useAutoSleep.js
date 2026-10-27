@@ -37,6 +37,7 @@ const useAutoSleep = (autosleep, enabled = true) => {
   // react-native-web does not fire the onTouchStart view prop, so on web
   // listen at the window level (capture also covers modals/portals)
   useEffect(() => {
+    if (!enabled) return;
     if (typeof window === 'undefined' || !window.addEventListener) return;
     window.addEventListener('touchstart', onActivity, true);
     window.addEventListener('mousedown', onActivity, true);
@@ -44,7 +45,7 @@ const useAutoSleep = (autosleep, enabled = true) => {
       window.removeEventListener('touchstart', onActivity, true);
       window.removeEventListener('mousedown', onActivity, true);
     };
-  }, [onActivity]);
+  }, [onActivity, enabled]);
 
   useEffect(() => {
     if (!enabled || !autosleep) return;

@@ -68,6 +68,7 @@ const Dashboard = () => {
   const quotes = useStore((s) => s.quotes);
   const lamarzocco = useStore((s) => s.lamarzocco);
   const pool = useStore((s) => s.pool);
+  const isKioskDisplay = useStore((s) => s.isKioskDisplay);
 
   const isTibberEnabled = config.energyProvider === 'tibber' || (config.energyProvider === undefined && !!config.tibber1?.apiEndpoint?.apiKey);
   const isOnline = useIsOnline();
@@ -91,7 +92,7 @@ const Dashboard = () => {
     });
   }, [setArticles]);
 
-  const onUserActivity = useAutoSleep(config.autosleep, configLoaded);
+  const onUserActivity = useAutoSleep(config.autosleep, configLoaded && isKioskDisplay);
 
   // Determine polling interval — reduced frequency between 2-8am
   const isNightMode = hour > 2 && hour < 8;

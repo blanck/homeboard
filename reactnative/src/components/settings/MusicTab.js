@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, ScrollView, Alert} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../../store';
@@ -7,7 +7,8 @@ import SonosScanner from './SonosScanner';
 import DropdownPicker from './DropdownPicker';
 import {getZoneGroups, getCoordinatorIp, getSonosFavorites, getSonosPlaylists, getMediaInfo} from '../../services/sonosService';
 import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID, searchSpotify} from '../../services/spotifyOAuthService';
-import {openOAuthUrl} from '../../utils/oauthPopup';
+import {openOAuthWindow} from '../../utils/oauthPopup';
+import {useNativeClick, nativeOnlyPress} from '../../utils/nativeClick';
 
 const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const [groupOptions, setGroupOptions] = useState([]);
@@ -31,11 +32,16 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
     isSpotifyConnected().then(setSpotifyConnectedLocal);
   }, [spotifyConnectedStore]);
 
+  const spotifyBtnRef = useRef(null);
+  useNativeClick(spotifyBtnRef, () => handleSpotifyConnect());
+
   const handleSpotifyConnect = async () => {
+    const oauth = openOAuthWindow();
     try {
       const url = await startSpotifyOAuth();
-      await openOAuthUrl(url);
+      oauth.navigate(url);
     } catch (err) {
+      oauth.close();
       Alert.alert('Spotify', err.message || 'Could not start Spotify login');
     }
   };
@@ -282,7 +288,10 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity style={styles.spotifyConnectBtn} onPress={handleSpotifyConnect}>
+                  <TouchableOpacity
+                    ref={spotifyBtnRef}
+                    style={styles.spotifyConnectBtn}
+                    onPress={nativeOnlyPress(handleSpotifyConnect)}>
                     <Icon name="link" size={16} color="#ffffff" />
                     <Text style={styles.spotifyConnectText}>{translate('connectSpotify', lang)}</Text>
                   </TouchableOpacity>

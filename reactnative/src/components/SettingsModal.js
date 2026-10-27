@@ -184,6 +184,7 @@ const SettingsModal = () => {
         backgroundEveningUrl: config.background?.eveningUrl || '',
         autosleep: config.autosleep || '',
         keepAwake: config.keepAwake !== false,
+        showOnScreenKeyboard: config.showOnScreenKeyboard === true,
         quickPicks: config.quickPicks || [],
         smartDeviceType: config.smartDevices?.lamarzocco?.serialNumber ? 'lamarzocco' : '',
         lmSerialNumber: config.smartDevices?.lamarzocco?.serialNumber || '',
@@ -341,6 +342,7 @@ const SettingsModal = () => {
       background: {dayUrl: form.backgroundDayUrl, eveningUrl: form.backgroundEveningUrl},
       autosleep: form.autosleep,
       keepAwake: form.keepAwake,
+      showOnScreenKeyboard: form.showOnScreenKeyboard === true,
       playlist: config.playlist || {},
       quickPicks: form.quickPicks || [],
     };

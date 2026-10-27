@@ -2,7 +2,9 @@
 // structure. Only runs when no settings are saved yet; after that the
 // Settings UI (or LAN sync from the Android app) owns the config.
 
-const SETTINGS_LS_KEY = 'hbas:homeboard_settings';
+import AsyncStorage from './shims/async-storage';
+
+const SETTINGS_KEY = 'homeboard_settings';
 
 // Legacy playlists used Framework7 icon names; map to Material Community.
 const F7_ICON_MAP = {
@@ -71,13 +73,13 @@ export const mapLegacyConfig = (legacy, sonosIp) => {
 
 export const importLegacyConfigIfFresh = async () => {
   try {
-    if (window.localStorage.getItem(SETTINGS_LS_KEY)) return false;
+    if (await AsyncStorage.getItem(SETTINGS_KEY)) return false;
     const resp = await fetch('/legacy-config');
     if (!resp.ok) return false;
     const {legacy, sonosIp} = await resp.json();
     if (!legacy) return false;
     const mapped = mapLegacyConfig(legacy, sonosIp);
-    window.localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(mapped));
+    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(mapped));
     console.warn('Homeboard: imported legacy config.js into settings');
     return true;
   } catch {
