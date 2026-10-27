@@ -221,6 +221,18 @@ const Dashboard = () => {
 
   // Tibber live feed (WebSocket) — continuous
   const tibberFeedCleanupRef = useRef(null);
+
+  // Settings refresh button. Refs so the run sees the config saved in the
+  // same tap rather than the callbacks from the previous render
+  const refreshNonce = useStore((s) => s.refreshNonce);
+  const fetchersRef = useRef({fetchMinutely, fetchHourly});
+  fetchersRef.current = {fetchMinutely, fetchHourly};
+  useEffect(() => {
+    if (!refreshNonce) return;
+    fetchersRef.current.fetchMinutely();
+    fetchersRef.current.fetchHourly();
+    tibberFeedCleanupRef.current?.reconnectNow?.();
+  }, [refreshNonce]);
   useEffect(() => {
     if (isTibberEnabled && config.tibber2?.pulse && config.tibber1?.apiEndpoint?.apiKey && config.tibber1?.homeId) {
       const cleanup = createTibberFeed(

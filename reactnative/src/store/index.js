@@ -156,6 +156,10 @@ const useStore = create((set, get) => ({
   hideSearch: () =>
     set({searchPopupVisible: false, popupAnchor: null}),
 
+  // Bumped by the settings refresh button; the dashboard refetches everything
+  refreshNonce: 0,
+  requestRefresh: () => set((state) => ({refreshNonce: state.refreshNonce + 1})),
+
   // Screen
   asleep: false,
   keepAwake: true,

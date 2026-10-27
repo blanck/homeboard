@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {DevSettings} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import {translate} from '../utils/translations';
@@ -93,10 +92,15 @@ const SettingsModal = () => {
   const setArticles = useStore((s) => s.setArticles);
   const setTibber = useStore((s) => s.setTibber);
   const setTibber2 = useStore((s) => s.setTibber2);
+  const requestRefresh = useStore((s) => s.requestRefresh);
   const lang = config.language || 'en';
 
   const [activeTab, setActiveTab] = useState('general');
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimer = useRef(null);
   const [form, setForm] = useState({});
+  const formRef = useRef(form);
+  formRef.current = form;
   const scale = useRef(new Animated.Value(0.92)).current;
 
   useEffect(() => {
@@ -204,7 +208,12 @@ const SettingsModal = () => {
   };
 
 
-  const saveSettings = async () => {
+  // close=false lets the Save button persist without dismissing the modal
+  // overrides: fields changed outside the form (phone setup) that must be
+  // saved before the form state has caught up
+  const saveSettings = async (close = true, overrides = null) => {
+    // eslint-disable-next-line no-shadow
+    const form = {...formRef.current, ...overrides};
     const newConfig = {
       language: form.language,
       location: {
@@ -383,7 +392,12 @@ const SettingsModal = () => {
 
     setConfig(newConfig);
     setKeepAwake(form.keepAwake);
-    setSettingsVisible(false);
+    if (close) setSettingsVisible(false);
+    else {
+      setJustSaved(true);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setJustSaved(false), 2000);
+    }
 
     if (newsChanged) {
       fetchNews(newConfig).then((articles) => {
@@ -447,8 +461,8 @@ const SettingsModal = () => {
       transparent={true}
       statusBarTranslucent={true}
       navigationBarTranslucent={true}
-      onRequestClose={saveSettings}>
-      <Pressable style={styles.overlay} onPress={saveSettings}>
+      onRequestClose={() => saveSettings(true)}>
+      <Pressable style={styles.overlay} onPress={() => saveSettings(true)}>
         <Animated.View style={[styles.modal, {transform: [{scale}]}]}>
           <Pressable style={styles.modalInner} onPress={() => {}}>
           <View style={styles.header}>
@@ -456,10 +470,22 @@ const SettingsModal = () => {
               {translate('settings', lang)}
             </Text>
             <View style={styles.headerActions}>
-              <TouchableOpacity onPress={() => DevSettings.reload()} style={styles.reloadBtn}>
+              <TouchableOpacity
+                onPress={() => {
+                  saveSettings(true);
+                  requestRefresh();
+                }}
+                style={styles.reloadBtn}>
                 <Icon name="refresh" size={24} color="#cccccc" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={saveSettings}>
+              <TouchableOpacity onPress={() => saveSettings(false)} style={styles.reloadBtn}>
+                <Icon
+                  name={justSaved ? 'check-circle' : 'content-save-outline'}
+                  size={24}
+                  color={justSaved ? '#3fcf40' : '#cccccc'}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => saveSettings(true)}>
                 <Icon name="close" size={24} color="#cccccc" />
               </TouchableOpacity>
             </View>
