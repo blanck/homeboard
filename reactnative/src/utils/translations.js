@@ -26,6 +26,9 @@ const translations = {
     rightModule: 'Right Column',
     moduleAuto: 'Auto',
     topStories: 'Top stories',
+    readerView: 'Reader',
+    originalPage: 'Original',
+    loadingArticle: 'Loading article...',
     // General tab
     language: 'Language',
     location: 'Location',
@@ -244,6 +247,9 @@ const translations = {
     rightModule: 'Höger kolumn',
     moduleAuto: 'Automatisk',
     topStories: 'Toppnyheter',
+    readerView: 'Läsläge',
+    originalPage: 'Original',
+    loadingArticle: 'Laddar artikeln...',
     music: 'Musik',
     // General tab
     language: 'Språk',

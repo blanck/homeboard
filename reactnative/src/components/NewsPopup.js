@@ -1,23 +1,34 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
   ScrollView,
+  Image,
   ImageBackground,
   TouchableOpacity,
   Pressable,
   Linking,
   Animated,
+  Platform,
 } from 'react-native';
 import Svg, {Defs, LinearGradient as SvgLinearGradient, Rect, Stop} from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import {formatArticleContent} from '../utils/formatting';
 import {fs, sp} from '../utils/scale';
+import ArticleReader from './ArticleReader';
+
+// The kiosk browser has no WebView; it keeps the summary card
+const INLINE_READER = Platform.OS !== 'web';
 
 const PANEL_BG = '#16162a';
+
+// RSS thumbnails are typically a few hundred pixels wide; stretched across the
+// header they look washed out and cropped. Anything narrower than this gets a
+// classic two-column treatment instead, image left and text right.
+const HERO_MIN_WIDTH = 900;
 
 // Blends the bottom edge of the image into the text panel
 const ImageFade = () => (
@@ -36,7 +47,9 @@ const NewsPopup = () => {
   const visible = useStore((s) => s.newsPopupVisible);
   const article = useStore((s) => s.currentArticle);
   const hideArticle = useStore((s) => s.hideArticle);
+  const lang = useStore((s) => s.config.language || 'en');
   const scale = useRef(new Animated.Value(0.9)).current;
+  const [imageWidth, setImageWidth] = useState(null);
 
   useEffect(() => {
     if (visible) {
@@ -51,11 +64,52 @@ const NewsPopup = () => {
     }
   }, [visible, scale]);
 
+  // Layout depends on the real pixel size, which only the loaded image knows.
+  // Must sit above the `if (!article)` return: hooks run on every render.
+  const imageUrl = article?.urlToImage || null;
+  useEffect(() => {
+    setImageWidth(null);
+    if (!imageUrl) return undefined;
+    let active = true;
+    Image.getSize(
+      imageUrl,
+      (width) => active && setImageWidth(width),
+      () => active && setImageWidth(0),
+    );
+    return () => {
+      active = false;
+    };
+  }, [imageUrl]);
+
   if (!article) {
     return null;
   }
 
+  if (INLINE_READER && article.url) {
+    return (
+      <Modal
+        visible={visible}
+        animationType="fade"
+        transparent={true}
+        statusBarTranslucent={true}
+        navigationBarTranslucent={true}
+        onRequestClose={hideArticle}>
+        <View style={styles.overlay}>
+          {/* Backdrop as a sibling: on Android a Pressable around the WebView
+              takes over its touches, so the article could not scroll */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={hideArticle} />
+          <Animated.View style={[styles.popup, styles.readerPopup, {transform: [{scale}]}]}>
+            <ArticleReader article={article} lang={lang} onClose={hideArticle} />
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  }
+
   const hasImage = !!article.urlToImage;
+
+  const isHero = hasImage && imageWidth !== null && imageWidth >= HERO_MIN_WIDTH;
+  const isSideBySide = hasImage && imageWidth !== null && imageWidth > 0 && !isHero;
 
   return (
     <Modal
@@ -68,7 +122,7 @@ const NewsPopup = () => {
       <Pressable style={styles.overlay} onPress={hideArticle}>
         <Animated.View style={[styles.popup, {transform: [{scale}]}]}>
           <Pressable style={styles.popupInner} onPress={() => {}}>
-            {hasImage ? (
+            {isHero ? (
               // Wrapper owns the height: ImageBackground copies width/height
               // from its own style onto the inner image, which double-applies
               // percentages (40% of 40%)
@@ -86,24 +140,35 @@ const NewsPopup = () => {
               <ScrollView
                 contentContainerStyle={styles.textContent}
                 showsVerticalScrollIndicator={false}>
-                <Text style={styles.headerTitle}>{article.title}</Text>
-                {article.description ? (
-                  <Text style={styles.ingress}>
-                    {formatArticleContent(article.description)}
-                  </Text>
-                ) : null}
-                {article.content ? (
-                  <Text style={styles.body}>
-                    {formatArticleContent(article.content)}
-                  </Text>
-                ) : null}
-                <TouchableOpacity
-                  onPress={() => Linking.openURL(article.url)}
-                  style={styles.linkWrap}>
-                  <Text style={styles.link}>
-                    Read full article at {article.source?.name}
-                  </Text>
-                </TouchableOpacity>
+                <View style={isSideBySide ? styles.columns : null}>
+                  {isSideBySide ? (
+                    <Image
+                      source={{uri: article.urlToImage}}
+                      style={styles.sideImage}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  <View style={isSideBySide ? styles.sideColumn : null}>
+                    <Text style={styles.headerTitle}>{article.title}</Text>
+                    {article.description ? (
+                      <Text style={styles.ingress}>
+                        {formatArticleContent(article.description)}
+                      </Text>
+                    ) : null}
+                    {article.content ? (
+                      <Text style={styles.body}>
+                        {formatArticleContent(article.content)}
+                      </Text>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(article.url)}
+                      style={styles.linkWrap}>
+                      <Text style={styles.link}>
+                        Read full article at {article.source?.name}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </ScrollView>
             </View>
 
@@ -136,6 +201,12 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 24,
   },
+  // Leaves a dark margin all round that also closes the reader when tapped
+  readerPopup: {
+    width: '90%',
+    height: '90%',
+    maxHeight: '90%',
+  },
   // The popup hugs its content up to maxHeight, so short articles get a
   // compact card instead of a mostly empty panel
   popupInner: {
@@ -166,6 +237,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 24,
+  },
+  columns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  sideImage: {
+    width: sp(240),
+    height: sp(165),
+    borderRadius: 8,
+    marginRight: 18,
+    flexShrink: 0,
+    backgroundColor: '#222',
+  },
+  // minWidth 0 lets long headlines wrap instead of stretching the row
+  sideColumn: {
+    flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
     color: '#ffffff',

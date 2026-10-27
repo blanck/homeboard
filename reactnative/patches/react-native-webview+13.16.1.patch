@@ -1,0 +1,59 @@
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 0287e1c..388792f 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -35,6 +35,12 @@ import com.reactnativecommunity.webview.events.TopShouldStartLoadWithRequestEven
+ import android.webkit.CookieManager;
+ import android.webkit.CookieSyncManager;
+ 
++import java.io.BufferedReader;
++import java.io.ByteArrayInputStream;
++import java.io.IOException;
++import java.io.InputStreamReader;
++import java.util.HashSet;
++import java.util.Set;
+ import java.util.concurrent.atomic.AtomicReference;
+ 
+ public class RNCWebViewClient extends WebViewClient {
+@@ -49,6 +55,41 @@ public class RNCWebViewClient extends WebViewClient {
+         basicAuthCredential = credential;
+     }
+ 
++    // Homeboard patch: ad and tracker hosts from the app's assets/blocked-hosts.txt
++    // get an empty response. Subresources only, so a tapped link still opens.
++    private static volatile Set<String> sBlockedHosts;
++
++    private static Set<String> blockedHosts(android.content.Context context) {
++        if (sBlockedHosts == null) {
++            Set<String> hosts = new HashSet<>();
++            try (BufferedReader reader = new BufferedReader(new InputStreamReader(context.getAssets().open("blocked-hosts.txt")))) {
++                String line;
++                while ((line = reader.readLine()) != null) {
++                    line = line.trim();
++                    if (!line.isEmpty() && !line.startsWith("#")) hosts.add(line);
++                }
++            } catch (IOException ignored) {
++            }
++            sBlockedHosts = hosts;
++        }
++        return sBlockedHosts;
++    }
++
++    @Override
++    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++        String host = request.getUrl().getHost();
++        if (host != null && !request.isForMainFrame()) {
++            Set<String> blocked = blockedHosts(view.getContext());
++            // a.b.doubleclick.net, b.doubleclick.net, doubleclick.net; never the bare TLD
++            for (String h = host; h.indexOf('.') > 0; h = h.substring(h.indexOf('.') + 1)) {
++                if (blocked.contains(h)) {
++                    return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
++                }
++            }
++        }
++        return super.shouldInterceptRequest(view, request);
++    }
++
+     @Override
+     public void onPageFinished(WebView webView, String url) {
+         super.onPageFinished(webView, url);
