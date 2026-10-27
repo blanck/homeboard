@@ -25,6 +25,7 @@ import SonosWidget from './widgets/SonosWidget';
 import PlaylistWidget from './widgets/PlaylistWidget';
 import TodoWidget from './widgets/TodoWidget';
 import ChoresWidget from './widgets/ChoresWidget';
+import HeadlinesWidget, {HEADLINE_COUNT} from './widgets/HeadlinesWidget';
 import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 
 // Components
@@ -252,6 +253,8 @@ const Dashboard = () => {
         return <TodoWidget />;
       case 'chores':
         return <ChoresWidget />;
+      case 'headlines':
+        return <HeadlinesWidget />;
       default:
         if (hasStocks) {
           return <StocksWidget />;
@@ -315,7 +318,7 @@ const Dashboard = () => {
         {/* Row 2: News | Calendar | Stocks/Prices */}
         <View style={styles.middleRow}>
           <View style={styles.col35}>
-            <NewsWidget />
+            <NewsWidget skip={config.rightModule === 'headlines' ? HEADLINE_COUNT : 0} />
           </View>
           <View style={styles.col30}>
             <CalendarWidget />

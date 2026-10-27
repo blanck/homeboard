@@ -8,7 +8,7 @@ import {fs, sp} from '../utils/scale';
 import WidgetCard from '../components/WidgetCard';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const NewsWidget = () => {
+const NewsWidget = ({skip = 0}) => {
   const articles = useStore((s) => s.articles);
   const showArticle = useStore((s) => s.showArticle);
   const config = useStore((s) => s.config);
@@ -27,7 +27,7 @@ const NewsWidget = () => {
       </View>
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         {articles
-          ? articles.map((article, index) => (
+          ? articles.slice(skip).map((article, index) => (
               <TouchableOpacity
                 key={index}
                 style={styles.row}

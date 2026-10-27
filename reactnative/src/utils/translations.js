@@ -25,6 +25,7 @@ const translations = {
     chores: 'Chores',
     rightModule: 'Right Column',
     moduleAuto: 'Auto',
+    topStories: 'Top stories',
     // General tab
     language: 'Language',
     location: 'Location',
@@ -242,6 +243,7 @@ const translations = {
     chores: 'Sysslor',
     rightModule: 'Höger kolumn',
     moduleAuto: 'Automatisk',
+    topStories: 'Toppnyheter',
     music: 'Musik',
     // General tab
     language: 'Språk',

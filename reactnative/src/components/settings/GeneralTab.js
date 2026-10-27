@@ -131,6 +131,7 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
     {label: translate('stocks', lang), value: 'stocks'},
     {label: translate('prices', lang), value: 'energy'},
     {label: translate('todo', lang), value: 'todo'},
+    {label: translate('topStories', lang), value: 'headlines'},
     {label: translate('chores', lang), value: 'chores'},
   ];
 
