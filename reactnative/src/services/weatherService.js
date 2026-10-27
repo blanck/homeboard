@@ -1,6 +1,6 @@
 // Port of server.js weather + home.vue getCondition/getForecast
 
-import {fetchJsonSafe} from '../utils/fetchSafe';
+import {fetchJsonSafe, fetchWithTimeout} from '../utils/fetchSafe';
 
 export const fetchCurrentWeather = async (config) => {
   const {key} = config.weather.openweathermap;
@@ -132,6 +132,34 @@ export const fetchNetatmoPublicToken = async () => {
     publicTokenCache = {token, fetchedAt: now};
   }
   return token;
+};
+
+
+// Settings-only check. A parsed station id proves nothing: the id can be well
+// formed and still unknown to the forecast endpoint, so actually call it and
+// surface Netatmo's own error rather than a silent null.
+export const verifyNetatmoPublicStation = async (publicUrl, language) => {
+  const stationId = extractStationId(publicUrl);
+  if (!stationId) return {ok: false, error: 'no station id in that URL'};
+
+  const token = await fetchNetatmoPublicToken();
+  if (!token) return {ok: false, error: 'could not obtain a Netatmo token'};
+
+  const locale = language === 'sv' ? 'sv-SE' : 'en-US';
+  try {
+    // Not fetchJsonSafe: it discards the body on a non-2xx, losing the reason
+    const response = await fetchWithTimeout(
+      `https://app.netatmo.net/api/simplifiedfuturemeasure?device_id=${stationId}&locale=${locale}`,
+      {headers: {Authorization: `Bearer ${token}`}},
+      12000,
+    );
+    const data = await response.json().catch(() => null);
+    const days = data?.body?.forecastDays?.length || 0;
+    if (days) return {ok: true, days, stationId};
+    return {ok: false, error: data?.error?.message || `HTTP ${response.status}`};
+  } catch (err) {
+    return {ok: false, error: err.message || 'request failed'};
+  }
 };
 
 export const fetchNetatmoPublicForecast = async (config) => {

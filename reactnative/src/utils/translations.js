@@ -175,6 +175,10 @@ const translations = {
     spotifyClientIdMissing: 'Spotify Client ID not configured in this build.',
     // Smart Devices tab
     smartDevices: 'Smart Devices',
+    testStation: 'Test station',
+    testing: 'Testing...',
+    stationWorks: 'Works, forecast days',
+    stationFailed: 'Not working',
     deviceType: 'Device Type',
     login: 'Login',
     email: 'Email',
@@ -385,6 +389,10 @@ const translations = {
     spotifyClientIdMissing: 'Spotify Client ID är inte konfigurerad i denna version.',
     // Smart Devices tab
     smartDevices: 'Smarta enheter',
+    testStation: 'Testa station',
+    testing: 'Testar...',
+    stationWorks: 'Fungerar, prognosdagar',
+    stationFailed: 'Fungerar inte',
     deviceType: 'Enhetstyp',
     login: 'Logga in',
     email: 'E-post',

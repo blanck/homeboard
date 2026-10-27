@@ -121,10 +121,11 @@ const Dashboard = () => {
   // Forecast + calendar + tibber prices — every 60 min
   const fetchHourly = useCallback(async () => {
     try {
+      // Netatmo needs both an owned station and a live bearer; without them
+      // this is a guaranteed 403 every hour. met.no is the default source.
       let fc = null;
-      if (config.netatmo?.mode === 'public' && config.netatmo?.publicUrl) {
-        fc = await fetchNetatmoPublicForecast(config);
-      } else if (config.netatmo?.forecast?.device_id) {
+      const netatmo = config.netatmo?.forecast;
+      if (netatmo?.device_id && netatmo?.bearer) {
         fc = await fetchNetatmoForecast(config);
       }
       if (!fc) {

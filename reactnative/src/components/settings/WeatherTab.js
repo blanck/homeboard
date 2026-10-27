@@ -1,7 +1,8 @@
-import React, {useMemo} from 'react';
+import React, {useMemo, useState} from 'react';
 import {View, Text, StyleSheet, Linking, TouchableOpacity} from 'react-native';
 import {translate} from '../../utils/translations';
 import DropdownPicker from './DropdownPicker';
+import {verifyNetatmoPublicStation} from '../../services/weatherService';
 
 const extractStationId = (urlOrMac) => {
   if (!urlOrMac) return null;
@@ -19,12 +20,23 @@ const extractStationId = (urlOrMac) => {
 };
 
 const WeatherTab = ({form, updateField, lang, Section, Field, Row}) => {
-  const modeOptions = [
-    {label: translate('publicStation', lang), value: 'public'},
-    {label: translate('myStation', lang), value: 'my'},
-  ];
+  // Netatmo's forecast endpoint only serves stations owned by the signed-in
+  // account: every public station id returns "Device not found", including
+  // ones its own weathermap lists. So public mode is gone and the forecast
+  // comes from met.no, which needs no key.
+  const modeOptions = [{label: translate('myStation', lang), value: 'my'}];
 
-  const mode = form.netatmoMode || 'public';
+  const mode = 'my';
+
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
+
+  const checkStation = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    setCheckResult(await verifyNetatmoPublicStation(form.netatmoPublicUrl, lang));
+    setChecking(false);
+  };
 
   const extractedId = useMemo(
     () => extractStationId(form.netatmoPublicUrl),
@@ -66,6 +78,23 @@ const WeatherTab = ({form, updateField, lang, Section, Field, Row}) => {
             {extractedId ? (
               <Text style={styles.stationId}>
                 {translate('extractedStationId', lang)}: {extractedId}
+              </Text>
+            ) : null}
+            {extractedId ? (
+              <TouchableOpacity
+                style={styles.testBtn}
+                disabled={checking}
+                onPress={checkStation}>
+                <Text style={styles.testBtnText}>
+                  {checking ? translate('testing', lang) : translate('testStation', lang)}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {checkResult ? (
+              <Text style={checkResult.ok ? styles.testOk : styles.testFail}>
+                {checkResult.ok
+                  ? `${translate('stationWorks', lang)} (${checkResult.days})`
+                  : `${translate('stationFailed', lang)}: ${checkResult.error}`}
               </Text>
             ) : null}
           </View>
@@ -143,6 +172,17 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textDecorationLine: 'underline',
   },
+  testBtn: {
+    backgroundColor: '#3a3a3a',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  testBtnText: {color: '#ffffff', fontSize: 13, fontWeight: '600'},
+  testOk: {color: '#3fcf40', fontSize: 12, marginTop: 8},
+  testFail: {color: '#ff6666', fontSize: 12, marginTop: 8},
   stationId: {
     color: '#4caf50',
     fontSize: 12,
