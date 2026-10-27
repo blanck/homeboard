@@ -22,6 +22,7 @@ export default defineConfig({
         replacement: 'react-native-svg/lib/module/ReactNativeSVG.web.js',
       },
       {find: 'react-native-udp', replacement: shim('udp.js')},
+      {find: 'react-native-tcp-socket', replacement: shim('tcp-socket.js')},
       {find: 'react-native-webview', replacement: shim('webview.js')},
       {find: 'react-native-encrypted-storage', replacement: shim('encrypted-storage.js')},
       {find: '@react-native-async-storage/async-storage', replacement: shim('async-storage.js')},

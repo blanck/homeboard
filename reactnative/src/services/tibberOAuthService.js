@@ -10,10 +10,8 @@ const CLIENT_SECRET = TIBBER_CLIENT_SECRET;
 // (www/oauth/tibber/index.html) bounces the callback with its query back to
 // http://127.0.0.1:8080. Register this exact URI in the Tibber developer
 // console (thewall.tibber.com).
-const REDIRECT_URI =
-  Platform.OS === 'web'
-    ? 'https://homeboard-1.web.app/oauth/tibber'
-    : 'homeboard://oauth/tibber';
+const FORWARDER_URI = 'https://homeboard-1.web.app/oauth/tibber';
+const REDIRECT_URI = Platform.OS === 'web' ? FORWARDER_URI : 'homeboard://oauth/tibber';
 const SCOPES = 'openid profile email offline_access data-api-user-read data-api-homes-read data-api-vehicles-read data-api-chargers-read data-api-thermostats-read data-api-energy-systems-read data-api-inverters-read';
 const AUTHORIZE_URL = 'https://thewall.tibber.com/connect/authorize';
 const TOKEN_URL = 'https://thewall.tibber.com/connect/token';
@@ -66,7 +64,8 @@ export const generatePKCE = async () => {
 export const isOAuthConfigured = () => Boolean(CLIENT_ID && CLIENT_SECRET);
 
 // Build authorization URL and store PKCE state
-export const startOAuthFlow = async () => {
+// lanReturn ("ip.port"): phone-run login, see spotifyOAuthService
+export const startOAuthFlow = async ({lanReturn} = {}) => {
   if (!isOAuthConfigured()) {
     throw new Error(
       'Tibber OAuth not configured. Edit reactnative/src/secrets.local.js or use a release APK.',
@@ -75,15 +74,17 @@ export const startOAuthFlow = async () => {
   const {codeVerifier, codeChallenge} = await generatePKCE();
   const stateBytes = new Uint8Array(16);
   crypto.getRandomValues(stateBytes);
-  const state = base64url(stateBytes);
+  const nonce = base64url(stateBytes);
+  const state = lanReturn ? `lan.${lanReturn}.${nonce}` : nonce;
+  const redirectUri = lanReturn ? FORWARDER_URI : REDIRECT_URI;
 
   // Store PKCE verifier + state for the callback
-  await EncryptedStorage.setItem(PKCE_KEY, JSON.stringify({codeVerifier, state}));
+  await EncryptedStorage.setItem(PKCE_KEY, JSON.stringify({codeVerifier, state, redirectUri}));
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: SCOPES,
     state,
     code_challenge: codeChallenge,
@@ -98,7 +99,7 @@ export const exchangeCodeForTokens = async (code, receivedState) => {
   const pkceStr = await EncryptedStorage.getItem(PKCE_KEY);
   if (!pkceStr) throw new Error('No pending PKCE state');
 
-  const {codeVerifier, state} = JSON.parse(pkceStr);
+  const {codeVerifier, state, redirectUri} = JSON.parse(pkceStr);
   if (state !== receivedState) throw new Error('State mismatch');
 
   // Clean up PKCE state
@@ -107,7 +108,7 @@ export const exchangeCodeForTokens = async (code, receivedState) => {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri || REDIRECT_URI,
     client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET,
     code_verifier: codeVerifier,
@@ -161,6 +162,10 @@ export const refreshAccessToken = async (refreshToken) => {
   }
 
   if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    console.warn('Tibber: token refresh failed', res.status, err.error, '- reconnect from Phone setup');
+    // A revoked/expired grant never recovers; dropping it shows "Not connected"
+    if (err.error === 'invalid_grant') await clearTokens();
     return null;
   }
 

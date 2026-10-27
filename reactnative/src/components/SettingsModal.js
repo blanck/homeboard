@@ -10,6 +10,7 @@ import {
   Pressable,
   Animated,
   Alert,
+  Platform,
 } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +31,7 @@ import CalendarTab from './settings/CalendarTab';
 import MusicTab from './settings/MusicTab';
 import SmartDevicesTab from './settings/SmartDevicesTab';
 import ShareTab from './settings/ShareTab';
+import PhoneSetupTab from './settings/PhoneSetupTab';
 
 const SETTINGS_KEY = 'homeboard_settings';
 const SECRETS_KEY = 'homeboard_secrets';
@@ -73,6 +75,8 @@ const deepMerge = (...objects) => {
 
 const TABS = [
   {key: 'general', icon: 'cog'},
+  // Browsers cannot host the setup server; the Pi has its own phone page
+  ...(Platform.OS === 'web' ? [] : [{key: 'phoneSetup', icon: 'qrcode-scan'}]),
   {key: 'weather', icon: 'weather-partly-cloudy'},
   {key: 'energy', icon: 'flash'},
   {key: 'news', icon: 'newspaper'},
@@ -198,9 +202,13 @@ const SettingsModal = () => {
         poolTempMin: config.smartDevices?.pool?.tempMin ?? '',
         poolTempMax: config.smartDevices?.pool?.tempMax ?? '',
       });
-      setActiveTab('general');
     }
   }, [visible, config]);
+
+  // Only on open: a save from the phone setup tab updates config while open
+  useEffect(() => {
+    if (visible) setActiveTab('general');
+  }, [visible]);
 
   // `value` may be an updater so callers can queue several edits in one tick
   const updateField = (key, value) => {
@@ -462,6 +470,10 @@ const SettingsModal = () => {
         return <SmartDevicesTab {...tabProps} />;
       case 'share':
         return <ShareTab {...tabProps} />;
+      case 'phoneSetup':
+        return (
+          <PhoneSetupTab {...tabProps} onApply={(changes) => saveSettings(false, changes)} />
+        );
       default:
         return null;
     }

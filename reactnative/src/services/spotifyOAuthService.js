@@ -15,10 +15,8 @@ export const CLIENT_ID = '173224127e484c0f955e01857f83ed12';
 // on Firebase Hosting (www/oauth/spotify/index.html) bounces the callback
 // with its query back to http://127.0.0.1:8080. Register this exact URI in
 // the Spotify app dashboard.
-const REDIRECT_URI =
-  Platform.OS === 'web'
-    ? 'https://homeboard-1.web.app/oauth/spotify'
-    : 'homeboard://oauth/spotify';
+const FORWARDER_URI = 'https://homeboard-1.web.app/oauth/spotify';
+const REDIRECT_URI = Platform.OS === 'web' ? FORWARDER_URI : 'homeboard://oauth/spotify';
 // No scopes are required for catalog search. Add any extra scopes here later if needed.
 const SCOPES = '';
 const AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';
@@ -67,19 +65,23 @@ const generatePKCE = async () => {
   return {codeVerifier, codeChallenge};
 };
 
-export const startOAuthFlow = async () => {
+// lanReturn ("ip.port") runs the login on a phone: the forwarder reads it back
+// out of the state and bounces the code to the tablet's setup server
+export const startOAuthFlow = async ({lanReturn} = {}) => {
   if (!CLIENT_ID) throw new Error('Spotify CLIENT_ID not configured');
   const {codeVerifier, codeChallenge} = await generatePKCE();
   const stateBytes = new Uint8Array(16);
   crypto.getRandomValues(stateBytes);
-  const state = base64url(stateBytes);
+  const nonce = base64url(stateBytes);
+  const state = lanReturn ? `lan.${lanReturn}.${nonce}` : nonce;
+  const redirectUri = lanReturn ? FORWARDER_URI : REDIRECT_URI;
 
-  await EncryptedStorage.setItem(PKCE_KEY, JSON.stringify({codeVerifier, state}));
+  await EncryptedStorage.setItem(PKCE_KEY, JSON.stringify({codeVerifier, state, redirectUri}));
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
@@ -93,14 +95,14 @@ export const exchangeCodeForTokens = async (code, receivedState) => {
   const pkceStr = await EncryptedStorage.getItem(PKCE_KEY);
   if (!pkceStr) throw new Error('No pending PKCE state');
 
-  const {codeVerifier, state} = JSON.parse(pkceStr);
+  const {codeVerifier, state, redirectUri} = JSON.parse(pkceStr);
   if (state !== receivedState) throw new Error('State mismatch');
   await EncryptedStorage.removeItem(PKCE_KEY);
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri || REDIRECT_URI,
     client_id: CLIENT_ID,
     code_verifier: codeVerifier,
   });
