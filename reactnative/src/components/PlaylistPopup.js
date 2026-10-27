@@ -77,7 +77,11 @@ const PlaylistPopup = () => {
     async (item) => {
       if (!sonosIp) return;
       hideQuickPick();
-      reportResult(await sonosService.playFavorite(sonosIp, item));
+      reportResult(
+        item.uri?.startsWith('spotify:')
+          ? await sonosService.playSpotifyURI(sonosIp, item.uri)
+          : await sonosService.playFavorite(sonosIp, item),
+      );
     },
     [sonosIp, hideQuickPick, reportResult],
   );

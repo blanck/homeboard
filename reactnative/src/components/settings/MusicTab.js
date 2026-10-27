@@ -6,7 +6,7 @@ import {translate} from '../../utils/translations';
 import SonosScanner from './SonosScanner';
 import DropdownPicker from './DropdownPicker';
 import {getZoneGroups, getCoordinatorIp, getSonosFavorites, getSonosPlaylists, getMediaInfo} from '../../services/sonosService';
-import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID} from '../../services/spotifyOAuthService';
+import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID, searchSpotify} from '../../services/spotifyOAuthService';
 import {openOAuthUrl} from '../../utils/oauthPopup';
 
 const MusicTab = ({form, updateField, lang, Section, Field}) => {
@@ -20,6 +20,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [favFilter, setFavFilter] = useState('');
+  const [spotifyResults, setSpotifyResults] = useState([]);
   const [nowPlaying, setNowPlaying] = useState(null);
   const [addingCurrent, setAddingCurrent] = useState(false);
   const [spotifyConnected, setSpotifyConnectedLocal] = useState(false);
@@ -123,10 +124,18 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
     updateField('quickPicks', updated);
   };
 
+  // With no category picked, use the first one (creating it if needed):
+  // a tap that silently did nothing read as "adding playlists is broken"
   const addFavoriteToCategory = (favorite) => {
-    if (selectedCategory === null) return;
-    const updated = quickPicks.map((cat, i) => {
-      if (i !== selectedCategory) return cat;
+    let target = selectedCategory;
+    let base = quickPicks;
+    if (target === null) {
+      if (!base.length) base = [{name: translate('music', lang), items: []}];
+      target = 0;
+      setSelectedCategory(0);
+    }
+    const updated = base.map((cat, i) => {
+      if (i !== target) return cat;
       if (cat.items.some((item) => item.uri === favorite.uri)) return cat;
       return {...cat, items: [...cat.items, favorite]};
     });
@@ -173,9 +182,36 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
     return quickPicks[selectedCategory]?.items.some((item) => item.uri === uri) || false;
   };
 
+  // The filter doubles as a Spotify search, so playlists that are not Sonos
+  // favorites can still become quick picks
+  useEffect(() => {
+    const q = favFilter.trim();
+    if (!spotifyConnected || q.length < 2) {
+      setSpotifyResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchSpotify(q, {types: ['playlist', 'album'], limit: 8})
+        .then((r) => !cancelled && setSpotifyResults(r))
+        .catch(() => !cancelled && setSpotifyResults([]));
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [favFilter, spotifyConnected]);
+
   const allItems = [...favorites, ...playlists];
   const displayItems = favFilter.trim()
-    ? allItems.filter((f) => f.title.toLowerCase().includes(favFilter.toLowerCase()))
+    ? [
+        ...allItems.filter((f) => f.title.toLowerCase().includes(favFilter.toLowerCase())),
+        ...spotifyResults.map(({uri, title, source, creator}) => ({
+          uri,
+          title: creator ? `${title} · ${creator}` : title,
+          source,
+        })),
+      ]
     : allItems;
 
   return (
@@ -404,7 +440,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
               style={styles.filterInput}
               value={favFilter}
               onChangeText={setFavFilter}
-              placeholder={translate('filter', lang)}
+              placeholder={translate(spotifyConnected ? 'filterOrSearchSpotify' : 'filter', lang)}
               placeholderTextColor="#555"
               autoCapitalize="none"
               autoCorrect={false}
@@ -428,7 +464,6 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
                     <TouchableOpacity
                       key={i}
                       style={[styles.favItem, inSelected && styles.favItemAdded]}
-                      disabled={selectedCategory === null}
                       onPress={() => {
                         if (inSelected) {
                           removeFavoriteFromCategory(selectedCategory, fav.uri);
@@ -439,14 +474,11 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
                       <Icon
                         name={inSelected ? 'check-circle' : 'plus-circle-outline'}
                         size={16}
-                        color={selectedCategory === null ? '#444' : inSelected ? '#4caf50' : '#cccccc'}
+                        color={inSelected ? '#4caf50' : '#cccccc'}
                       />
                       <View style={styles.favItemContent}>
                         <Text
-                          style={[
-                            styles.favText,
-                            selectedCategory === null && styles.favTextDisabled,
-                          ]}
+                          style={styles.favText}
                           numberOfLines={1}>
                           {fav.title}
                         </Text>
@@ -666,9 +698,6 @@ const styles = StyleSheet.create({
   favSource: {
     color: '#666',
     fontSize: 10,
-  },
-  favTextDisabled: {
-    color: '#555',
   },
   howto: {
     color: '#666',

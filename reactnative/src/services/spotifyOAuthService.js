@@ -140,7 +140,13 @@ const refreshAccessToken = async (refreshToken) => {
   } catch {
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    console.warn('Spotify: token refresh failed', res.status, err.error, err.error_description);
+    // A revoked/expired grant never recovers; dropping it shows "Not connected"
+    if (err.error === 'invalid_grant') await clearTokens();
+    return null;
+  }
   const data = await res.json();
   const tokens = {
     accessToken: data.access_token,
@@ -182,10 +188,11 @@ export const clearTokens = async () => {
 
 let refreshPromise = null;
 
-const getValidAccessToken = async () => {
+// force: the API rejected the current token before its expiry
+const getValidAccessToken = async (force = false) => {
   const tokens = await loadTokens();
   if (!tokens) return null;
-  if (tokens.expiresAt > Date.now() + 60000) return tokens.accessToken;
+  if (!force && tokens.expiresAt > Date.now() + 60000) return tokens.accessToken;
   if (!tokens.refreshToken) return null;
   if (refreshPromise) {
     const t = await refreshPromise;
@@ -221,8 +228,7 @@ export const searchSpotify = async (query, {types = ['playlist', 'album', 'track
   const runForType = async (type) => {
     let res = await oneSearch(token, query, type, market, limit);
     if (res.status === 401) {
-      refreshPromise = null;
-      token = await getValidAccessToken();
+      token = await getValidAccessToken(true);
       if (!token) throw new Error('Spotify auth expired');
       res = await oneSearch(token, query, type, market, limit);
     }
