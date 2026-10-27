@@ -144,6 +144,7 @@ const SettingsModal = () => {
         tibberHomevolt: config.tibber2?.homevolt || '',
         tibberEv: !!config.tibber2?.ev,
         tibberEvDeviceIds: config.tibber2?.evDeviceIds || [],
+        tibberEvColor: config.tibber2?.evColor || '',
         newsProvider: config.newsapi?.provider || 'rss',
         newsRssFeeds: config.newsapi?.rssFeeds || '',
         newsKeywords: (config.newsapi?.keywords || []).join(','),
@@ -253,6 +254,7 @@ const SettingsModal = () => {
         homevolt: form.tibberHomevolt || '',
         ev: form.tibberEv || false,
         evDeviceIds: form.tibberEvDeviceIds || [],
+        evColor: form.tibberEvColor || '',
       },
       newsapi: {
         provider: form.newsProvider || 'rss',

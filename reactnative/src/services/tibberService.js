@@ -1,4 +1,5 @@
 // Tibber V1 GraphQL + WebSocket + Data API (REST)
+import {Platform} from 'react-native';
 import {getValidAccessToken, forceRefreshToken} from './tibberOAuthService';
 import {fetchWithTimeout} from '../utils/fetchSafe';
 
@@ -27,7 +28,10 @@ const dataApiFetch = async (path, retried = false) => {
     return null;
   }
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn('Tibber Data API:', res.status, path.split('/').slice(0, 3).join('/'));
+    return null;
+  }
 
   try {
     return await res.json();
@@ -100,6 +104,40 @@ const mapDeviceType = (device) => {
   return 'unknown';
 };
 
+// The Data API has no car picture (the old app API's imgUrl is gone), so
+// render Teslas with Tesla's configurator. It 403s browser user agents, hence
+// native only. Tibber does not report paint, so colour comes from settings.
+const TESLA_MODELS = {
+  'model y': {code: 'my', wheels: '$WY19B'},
+  'model 3': {code: 'm3', wheels: '$W38B'},
+  'model s': {code: 'ms', wheels: ''},
+  'model x': {code: 'mx', wheels: ''},
+};
+
+const teslaImageUrl = (info, decodedId, color) => {
+  if (Platform.OS === 'web') return '';
+  const text = `${info?.brand || ''} ${info?.model || ''} ${info?.name || ''} ${decodedId}`.toLowerCase();
+  if (!text.includes('tesla')) return '';
+  const key = Object.keys(TESLA_MODELS).find((k) => text.includes(k) || text.includes(k.replace(' ', '')));
+  const model = TESLA_MODELS[key || 'model y'];
+  const options = [color || '$PPSW', model.wheels].filter(Boolean).join(',');
+  return `https://static-assets.tesla.com/configurator/compositor?model=${model.code}&view=STUD_3QTR&size=400&bkba_opt=1&options=${options}`;
+};
+
+// The old app API sent imgUrl; the Data API documents none, but take any
+// image-looking URL it does include before falling back to a render
+const findImageUrl = (obj, depth = 0) => {
+  if (!obj || typeof obj !== 'object' || depth > 4) return '';
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string' && /^https?:/.test(value) && /img|image|picture|photo/i.test(key)) {
+      return value;
+    }
+    const nested = findImageUrl(value, depth + 1);
+    if (nested) return nested;
+  }
+  return '';
+};
+
 // Fetch device details
 export const fetchDataApiDeviceDetails = async (homeId, deviceId) => {
   return dataApiFetch(`/v1/homes/${homeId}/devices/${deviceId}`);
@@ -151,16 +189,17 @@ export const fetchTibberDevices = async (config) => {
 
     if (dtype === 'ev' && hasEv) {
       const deviceId = device.id || device.deviceId;
-      // Only include vehicles selected in settings
-      if (evDeviceIds.length > 0 && !evDeviceIds.includes(deviceId)) continue;
       const soc = getCap('storage.stateOfCharge');
       const percent = soc != null ? Number(soc) : 0;
       const alive = isOnline !== false;
       if (!result.electricVehicles) result.electricVehicles = [];
       result.electricVehicles.push({
+        deviceId,
         battery: {percent},
         isAlive: alive,
-        imgUrl: '',
+        imgUrl:
+          findImageUrl(details) ||
+          teslaImageUrl(details.info, decodeDeviceId(deviceId || ''), config.tibber2?.evColor),
         batteryText: `${name} ${percent}%`,
       });
     }
@@ -219,6 +258,13 @@ export const fetchTibberDevices = async (config) => {
         },
       };
     }
+  }
+
+  // Only vehicles picked in settings, unless none of those ids exist any more
+  // (a re-linked car gets a new id and would otherwise silently vanish)
+  if (result.electricVehicles && evDeviceIds.length) {
+    const picked = result.electricVehicles.filter((v) => evDeviceIds.includes(v.deviceId));
+    if (picked.length) result.electricVehicles = picked;
   }
 
   return Object.keys(result).length > 0 ? result : null;

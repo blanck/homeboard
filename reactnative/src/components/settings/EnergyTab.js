@@ -20,6 +20,15 @@ const deviceIcon = (type) => {
   }
 };
 
+// Tesla configurator paint codes, for the car picture on the dashboard
+const CAR_COLORS = [
+  {key: 'colorWhite', value: '$PPSW'},
+  {key: 'colorBlack', value: '$PBSB'},
+  {key: 'colorGrey', value: '$PMNG'},
+  {key: 'colorBlue', value: '$PPSB'},
+  {key: 'colorRed', value: '$PPMR'},
+];
+
 const PROVIDERS = [
   {label: 'Disabled', value: 'disabled'},
   {label: 'Tibber', value: 'tibber'},
@@ -266,6 +275,14 @@ const EnergyTab = ({form, updateField, lang, Section, Field}) => {
                         </View>
                       ))}
                     </View>
+                  ) : null}
+                  {(form.tibberEvDeviceIds || []).length > 0 ? (
+                    <DropdownPicker
+                      label={translate('carColor', lang)}
+                      value={form.tibberEvColor || '$PPSW'}
+                      options={CAR_COLORS.map((c) => ({label: translate(c.key, lang), value: c.value}))}
+                      onValueChange={(v) => updateField('tibberEvColor', v)}
+                    />
                   ) : null}
                 </>
               ) : (

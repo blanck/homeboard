@@ -57,10 +57,11 @@ const styles = StyleSheet.create({
   vehicle: {
     alignItems: 'center',
   },
+  // The render is a 16:9 PNG with the car centred in transparent margins
   image: {
-    width: 100,
-    height: 50,
-    marginBottom: 4,
+    width: 150,
+    height: 72,
+    marginVertical: -6,
   },
   name: {
     fontSize: fs(11),
