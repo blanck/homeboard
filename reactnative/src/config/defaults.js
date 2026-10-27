@@ -1,3 +1,5 @@
+import {DEFAULT_RSS_FEEDS} from './newsFeeds';
+
 const defaults = {
   location: {
     lat: 56.4277887,
@@ -46,7 +48,10 @@ const defaults = {
   },
 
   newsapi: {
-    provider: 'newsdata',
+    rssFeeds: DEFAULT_RSS_FEEDS,
+    // Whole-word match on title + summary; hits are shown first
+    keywords: [],
+    provider: 'rss',
     keys: {
       newsdata: '',
       thenewsapi: '',

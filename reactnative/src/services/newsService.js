@@ -3,7 +3,8 @@
 //   { title, description, url, urlToImage, publishedAt, source: { name, icon } }
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {fetchJsonSafe, fetchWithTimeout} from '../utils/fetchSafe';
+import {fetchJsonSafe, fetchTextSafe, fetchWithTimeout} from '../utils/fetchSafe';
+import {DEFAULT_RSS_FEEDS} from '../config/newsFeeds';
 
 export const CURRENTS_CATEGORIES_CACHE_KEY = 'homeboard_currents_categories';
 
@@ -326,16 +327,6 @@ const fetchFromCurrents = async (config) => {
   return articles.slice(0, 10).map(({_domain, ...rest}) => rest);
 };
 
-// Apply client-side title-based exclusion uniformly (some providers don't support it natively)
-const applyExclusion = (articles, exclude) => {
-  const list = (exclude || []).map((s) => s.toLowerCase()).filter(Boolean);
-  if (list.length === 0 || !articles) return articles;
-  return articles.filter((a) => {
-    const title = (a.title || '').toLowerCase();
-    return !list.some((w) => title.includes(w));
-  });
-};
-
 // newsapi.org top-headlines, matching what the legacy server.js used
 const fetchFromNewsApiOrg = async (config) => {
   const {keys, headlines} = config.newsapi || {};
@@ -368,20 +359,236 @@ const fetchFromNewsApiOrg = async (config) => {
   }));
 };
 
-export const fetchNews = async (config) => {
-  const provider = config.newsapi?.provider || 'newsdata';
-  console.warn('News: fetching from', provider);
-  let articles = null;
-  if (provider === 'thenewsapi') {
-    articles = await fetchFromTheNewsApi(config);
-  } else if (provider === 'currents') {
-    articles = await fetchFromCurrents(config);
-  } else if (provider === 'newsapiorg') {
-    articles = await fetchFromNewsApiOrg(config);
-  } else {
-    articles = await fetchFromNewsdata(config);
+
+// --- RSS ---------------------------------------------------------------------
+// Parsed with regexes because React Native has no DOMParser, same as the iCal
+// reader.
+
+const MAX_ARTICLES = 20;
+// Below this many keyword hits the list is topped up with the newest other
+// stories, so a quiet news day never leaves the widget empty
+const MIN_KEYWORD_ARTICLES = 6;
+const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const NEWS_CACHE_KEY = 'homeboard_news_cache';
+
+const stripCdata = (v = '') =>
+  v.replace(/^\s*<!\[CDATA\[/, '').replace(/\]\]>\s*$/, '').trim();
+
+const decodeEntities = (v = '') =>
+  v
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/g, '&');
+
+const tagValue = (xml, name) => {
+  const match = xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, 'i'));
+  return match ? decodeEntities(stripCdata(match[1])) : '';
+};
+
+const stripTags = (v = '') => decodeEntities(v.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+const hostOf = (url) => {
+  const match = String(url).match(/^https?:\/\/([^/]+)/i);
+  return match ? match[1].replace(/^www\./, '') : 'RSS';
+};
+
+const findImage = (block) => {
+  const media = block.match(/<(?:media:content|media:thumbnail|enclosure)[^>]*url="([^"]+)"/i);
+  if (media) return decodeEntities(media[1]);
+  // Inline images sit in CDATA (Verge, Electrek) or entity-encoded HTML
+  const inline = decodeEntities(block).match(/<img[^>]*src="(https?:[^"]+)"/i);
+  return inline ? inline[1] : null;
+};
+
+const parseFeed = (xml, feedUrl) => {
+  // Channel title lives before the first entry; fall back to the feed's host
+  const head = xml.split(/<(?:item|entry)[\s>]/i)[0];
+  const sourceName = stripTags(tagValue(head, 'title')) || hostOf(feedUrl);
+  const blocks = xml.match(/<(item|entry)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi) || [];
+  const articles = [];
+
+  for (const block of blocks) {
+    const title = stripTags(tagValue(block, 'title'));
+    if (!title) continue;
+
+    let url = tagValue(block, 'link');
+    if (!url) {
+      // Atom puts the target in an attribute rather than the element body
+      const href = block.match(/<link[^>]*href="([^"]+)"/i);
+      url = href ? decodeEntities(href[1]) : '';
+    }
+    // Techmeme links its own summary page; the story is the first other link
+    if (/^https?:\/\/(www\.)?techmeme\.com\//i.test(url)) {
+      const story = decodeEntities(block).match(/href="(https?:\/\/(?!(?:www\.)?techmeme\.com)[^"]+)"/i);
+      if (story) url = story[1];
+    }
+
+    const raw =
+      tagValue(block, 'pubDate') ||
+      tagValue(block, 'published') ||
+      tagValue(block, 'updated') ||
+      tagValue(block, 'dc:date');
+    const when = raw ? new Date(raw) : null;
+
+    articles.push({
+      title,
+      description: stripTags(tagValue(block, 'description') || tagValue(block, 'summary')).slice(0, 400),
+      url,
+      urlToImage: findImage(block),
+      publishedAt: when && !isNaN(when.getTime()) ? when.toISOString() : null,
+      source: {name: sourceName, icon: null},
+    });
   }
-  const final = applyExclusion(articles, config.newsapi?.exclude);
-  console.warn('News:', provider, 'returned', final?.length ?? 'null', 'articles');
-  return final;
+  return articles;
+};
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Whole-word-ish match so "AI" does not hit "said", while "Tesla" still
+// catches "Teslas" and "Tesla's"
+const wordMatcher = (words) => {
+  const list = (words || []).map((w) => String(w).trim()).filter(Boolean);
+  if (!list.length) return null;
+  const re = new RegExp(
+    `(?:^|[^a-z0-9])(?:${list.map(escapeRegex).join('|')})s?(?:$|[^a-z0-9])`,
+    'i',
+  );
+  return (article) => re.test(`${article.title} ${article.description || ''}`);
+};
+
+const applyExclusion = (articles, exclude) => {
+  const matches = wordMatcher(exclude);
+  if (!matches || !articles) return articles;
+  return articles.filter((a) => !matches(a));
+};
+
+const byRecency = (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+
+// Keyword hits first (newest first), topped up with the newest of the rest
+const rankByKeywords = (articles, keywords) => {
+  const matches = wordMatcher(keywords);
+  if (!matches) return articles;
+  const hits = articles.filter(matches);
+  if (hits.length >= MIN_KEYWORD_ARTICLES) return hits;
+  return [...hits, ...articles.filter((a) => !matches(a))];
+};
+
+const dedupe = (articles) => {
+  const seen = new Set();
+  return articles.filter((a) => {
+    const keys = [a.url, a.title.toLowerCase().replace(/[^a-z0-9]+/g, '')].filter(Boolean);
+    if (keys.some((k) => seen.has(k))) return false;
+    keys.forEach((k) => seen.add(k));
+    return true;
+  });
+};
+
+// url -> og:image ('' when the page has none), so each article is fetched once
+const imageCache = new Map();
+
+const fetchOgImage = async (url) => {
+  if (imageCache.has(url)) return imageCache.get(url);
+  const html = await fetchTextSafe(url, undefined, 8000);
+  const match =
+    html &&
+    (html.match(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/i));
+  const image = match ? decodeEntities(match[1]) : '';
+  // A failed fetch is retried on the next poll; a page without one is not
+  if (html) imageCache.set(url, image);
+  if (imageCache.size > 300) imageCache.delete(imageCache.keys().next().value);
+  return image;
+};
+
+const fillMissingImages = async (articles) => {
+  const missing = articles.filter((a) => !a.urlToImage && a.url);
+  for (let i = 0; i < missing.length; i += 4) {
+    await Promise.all(
+      missing.slice(i, i + 4).map(async (a) => {
+        a.urlToImage = (await fetchOgImage(a.url)) || null;
+      }),
+    );
+  }
+  return articles;
+};
+
+const fetchFromRss = async (config) => {
+  const feeds = (config.newsapi?.rssFeeds || DEFAULT_RSS_FEEDS)
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+
+  const perFeed = await Promise.all(
+    feeds.map(async (feed) => {
+      const xml = await fetchTextSafe(feed, undefined, 12000);
+      if (!xml) {
+        console.warn('News: RSS feed unreachable', feed);
+        return [];
+      }
+      try {
+        return parseFeed(xml, feed);
+      } catch (err) {
+        console.warn('News: RSS parse failed', feed, err.message);
+        return [];
+      }
+    }),
+  );
+
+  let all = dedupe(perFeed.flat().sort(byRecency));
+  if (!all.length) return null;
+
+  const cutoff = Date.now() - MAX_AGE_MS;
+  const fresh = all.filter((a) => a.publishedAt && new Date(a.publishedAt) >= cutoff);
+  if (fresh.length >= MAX_ARTICLES) all = fresh;
+
+  all = applyExclusion(all, config.newsapi?.exclude);
+  const picked = rankByKeywords(all, config.newsapi?.keywords).slice(0, MAX_ARTICLES);
+  return fillMissingImages(picked);
+};
+
+const fetchFromProvider = (provider, config) => {
+  switch (provider) {
+    case 'rss':
+      return fetchFromRss(config);
+    case 'thenewsapi':
+      return fetchFromTheNewsApi(config);
+    case 'currents':
+      return fetchFromCurrents(config);
+    case 'newsapiorg':
+      return fetchFromNewsApiOrg(config);
+    default:
+      return fetchFromNewsdata(config);
+  }
+};
+
+export const loadCachedNews = async () => {
+  try {
+    const str = await AsyncStorage.getItem(NEWS_CACHE_KEY);
+    const cached = str ? JSON.parse(str) : null;
+    return Array.isArray(cached) && cached.length ? cached : null;
+  } catch {
+    return null;
+  }
+};
+
+// Resolves to a non-empty list or null; null means "keep what is on screen"
+export const fetchNews = async (config) => {
+  const provider = config.newsapi?.provider || 'rss';
+  let articles = applyExclusion(
+    await fetchFromProvider(provider, config).catch(() => null),
+    config.newsapi?.exclude,
+  );
+  if (provider !== 'rss' && !articles?.length) {
+    // Free API tiers run out of quota or lapse; the feeds keep the widget alive
+    console.warn(`News: ${provider} returned nothing, falling back to RSS`);
+    articles = await fetchFromRss(config).catch(() => null);
+  }
+  if (!articles?.length) return null;
+  AsyncStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(articles)).catch(() => {});
+  return articles;
 };

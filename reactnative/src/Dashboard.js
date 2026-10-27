@@ -36,8 +36,8 @@ import SearchPopup from './components/SearchPopup';
 import Toast from './components/Toast';
 
 // Services
-import {fetchCurrentWeather, fetchForecast, fetchNetatmoForecast, fetchNetatmoPublicForecast} from './services/weatherService';
-import {fetchNews} from './services/newsService';
+import {fetchCurrentWeather, fetchForecast, fetchNetatmoForecast} from './services/weatherService';
+import {fetchNews, loadCachedNews} from './services/newsService';
 import {fetchQuotes} from './services/stockService';
 import {fetchCalendar} from './services/calendarService';
 import {fetchTibberPrices, fetchTibberDevices, createTibberFeed} from './services/tibberService';
@@ -77,6 +77,13 @@ const Dashboard = () => {
     }, 60 * 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Last good headlines from the previous run, so a restart is never blank
+  useEffect(() => {
+    loadCachedNews().then((cached) => {
+      if (cached && !useStore.getState().articles) setArticles(cached);
+    });
+  }, [setArticles]);
 
   const onUserActivity = useAutoSleep(config.autosleep, configLoaded);
 

@@ -6,6 +6,13 @@ import DropdownPicker from './DropdownPicker';
 import PillInput from './PillInput';
 import SourcePicker from './SourcePicker';
 import {CURRENTS_CATEGORIES_CACHE_KEY} from '../../services/newsService';
+import {RSS_PRESETS, DEFAULT_RSS_FEEDS} from '../../config/newsFeeds';
+
+const splitList = (v) =>
+  (v || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 const NEWS_LANGUAGES = [
   {label: 'English', value: 'en'},
@@ -16,6 +23,7 @@ const NEWS_LANGUAGES = [
 ];
 
 const NEWS_PROVIDERS = [
+  {label: 'RSS feeds', value: 'rss', site: '', formField: null},
   {label: 'NewsData.io', value: 'newsdata', site: 'https://newsdata.io', formField: 'newsKeyNewsdata'},
   {label: 'TheNewsAPI', value: 'thenewsapi', site: 'https://www.thenewsapi.com', formField: 'newsKeyThenewsapi'},
   {label: 'CurrentsAPI', value: 'currents', site: 'https://currentsapi.services', formField: 'newsKeyCurrents'},
@@ -45,7 +53,19 @@ const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
   const selected = (form.newsCategories || '').split(',').filter(Boolean);
   const activeProvider =
     NEWS_PROVIDERS.find((p) => p.value === form.newsProvider) || NEWS_PROVIDERS[0];
+  // RSS takes feed URLs instead of a key, and its sources are the feeds
+  const isRss = activeProvider.value === 'rss';
   const [currentsLearned, setCurrentsLearned] = useState(null);
+
+  // An empty feed list means the defaults, so show those as ticked
+  const feeds = splitList(form.newsRssFeeds || DEFAULT_RSS_FEEDS);
+  const presetUrls = RSS_PRESETS.map((p) => p.url);
+  const presetFeeds = feeds.filter((f) => presetUrls.includes(f));
+  const customFeeds = feeds.filter((f) => !presetUrls.includes(f));
+  const toggleFeed = (url) => {
+    const next = feeds.includes(url) ? feeds.filter((f) => f !== url) : [...feeds, url];
+    updateField('newsRssFeeds', next.join(','));
+  };
 
   useEffect(() => {
     if (activeProvider.value !== 'currents') return;
@@ -112,26 +132,66 @@ const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
         <View style={styles.providerCol}>
           <Text style={styles.colTitle}>{translate('newsProvider', lang)}</Text>
           <DropdownPicker
-            value={form.newsProvider || 'newsdata'}
+            value={form.newsProvider || 'rss'}
             options={NEWS_PROVIDERS}
             onValueChange={(v) => updateField('newsProvider', v)}
           />
         </View>
-        <View style={styles.providerCol}>
-          <Text style={styles.colTitle}>{translate('newsApiKey', lang)}</Text>
-          <Field
-            value={form[activeProvider.formField] || ''}
-            onChangeText={(v) => updateField(activeProvider.formField, v)}
-            secureTextEntry
-          />
-        </View>
+        {isRss ? null : (
+          <View style={styles.providerCol}>
+            <Text style={styles.colTitle}>{translate('newsApiKey', lang)}</Text>
+            <Field
+              value={form[activeProvider.formField] || ''}
+              onChangeText={(v) => updateField(activeProvider.formField, v)}
+              secureTextEntry
+            />
+          </View>
+        )}
       </View>
-      <TouchableOpacity onPress={() => Linking.openURL(activeProvider.site)}>
-        <Text style={styles.link}>
-          {translate('getKeyAt', lang)} {activeProvider.site.replace(/^https?:\/\//, '')}
-        </Text>
-      </TouchableOpacity>
+      {isRss ? (
+        <>
+          <Section title={translate('rssFeeds', lang)}>
+            <Text style={styles.rssHint}>{translate('rssHint', lang)}</Text>
+            <View style={styles.chips}>
+              {RSS_PRESETS.map((preset) => {
+                const active = feeds.includes(preset.url);
+                return (
+                  <TouchableOpacity
+                    key={preset.url}
+                    style={[styles.chip, styles.feedChip, active && styles.chipActive]}
+                    onPress={() => toggleFeed(preset.url)}>
+                    <Text style={[styles.chipText, styles.feedChipText, active && styles.chipTextActive]}>
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.label}>{translate('rssCustomFeeds', lang)}</Text>
+            <PillInput
+              value={customFeeds.join(',')}
+              onChange={(v) => updateField('newsRssFeeds', [...presetFeeds, ...splitList(v)].join(','))}
+              placeholder="https://example.com/feed/"
+            />
+          </Section>
+          <Section title={translate('newsKeywords', lang)}>
+            <PillInput
+              value={form.newsKeywords || ''}
+              onChange={(v) => updateField('newsKeywords', v)}
+              placeholder="AI, Tesla, Apple"
+            />
+            <Text style={styles.hint}>{translate('newsKeywordsHint', lang)}</Text>
+          </Section>
+        </>
+      ) : (
+        <TouchableOpacity onPress={() => Linking.openURL(activeProvider.site)}>
+          <Text style={styles.link}>
+            {translate('getKeyAt', lang)} {activeProvider.site.replace(/^https?:\/\//, '')}
+          </Text>
+        </TouchableOpacity>
+      )}
 
+      {isRss ? null : (
       <Section title={translate('newsCategories', lang)}>
         <TextInput
           style={styles.catInput}
@@ -163,7 +223,9 @@ const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
         </View>
         <Text style={styles.hint}>{translate('categoriesHint', lang)}</Text>
       </Section>
+      )}
 
+      {isRss ? null : (
       <Section title={translate('sources', lang)}>
         <SourcePicker
           value={form.newsSources}
@@ -173,16 +235,19 @@ const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
           provider={activeProvider.value}
         />
       </Section>
+      )}
 
       <Row>
-        <View style={styles.col}>
-          <DropdownPicker
-            label={translate('newsLanguage', lang)}
-            value={form.newsLanguage}
-            options={NEWS_LANGUAGES}
-            onValueChange={(v) => updateField('newsLanguage', v)}
-          />
-        </View>
+        {isRss ? null : (
+          <View style={styles.col}>
+            <DropdownPicker
+              label={translate('newsLanguage', lang)}
+              value={form.newsLanguage}
+              options={NEWS_LANGUAGES}
+              onValueChange={(v) => updateField('newsLanguage', v)}
+            />
+          </View>
+        )}
         <View style={styles.colWide}>
           <Text style={styles.label}>{translate('excludeWords', lang)}</Text>
           <PillInput
@@ -240,6 +305,14 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 11,
   },
+  feedChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  feedChipText: {
+    fontSize: 13,
+  },
   chipTextActive: {
     color: '#cccccc',
     fontWeight: '600',
@@ -268,6 +341,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  rssHint: {
+    color: '#888',
+    fontSize: 12,
     marginBottom: 8,
   },
   link: {

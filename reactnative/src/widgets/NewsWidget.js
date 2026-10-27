@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import {translate} from '../utils/translations';
 import {fs, sp} from '../utils/scale';
 import WidgetCard from '../components/WidgetCard';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const NewsWidget = () => {
   const articles = useStore((s) => s.articles);
@@ -31,12 +32,13 @@ const NewsWidget = () => {
                 key={index}
                 style={styles.row}
                 onPress={() => showArticle(article)}>
-                <Image
-                  source={{
-                    uri: article.urlToImage || 'https://via.placeholder.com/80x50',
-                  }}
-                  style={styles.image}
-                />
+                {article.urlToImage ? (
+                  <Image source={{uri: article.urlToImage}} style={styles.image} />
+                ) : (
+                  <View style={[styles.image, styles.imageFallback]}>
+                    <Icon name="newspaper-variant-outline" size={sp(20)} color="#666666" />
+                  </View>
+                )}
                 <Text style={styles.headline} numberOfLines={2}>
                   {formatHeadline(article.title)}
                 </Text>
@@ -89,6 +91,11 @@ const styles = StyleSheet.create({
     height: sp(45),
     borderRadius: 4,
     marginRight: sp(8),
+  },
+  imageFallback: {
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headline: {
     flex: 1,

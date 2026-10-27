@@ -144,7 +144,9 @@ const SettingsModal = () => {
         tibberHomevolt: config.tibber2?.homevolt || '',
         tibberEv: !!config.tibber2?.ev,
         tibberEvDeviceIds: config.tibber2?.evDeviceIds || [],
-        newsProvider: config.newsapi?.provider || 'newsdata',
+        newsProvider: config.newsapi?.provider || 'rss',
+        newsRssFeeds: config.newsapi?.rssFeeds || '',
+        newsKeywords: (config.newsapi?.keywords || []).join(','),
         newsKeyNewsdata:
           config.newsapi?.keys?.newsdata ||
           (!config.newsapi?.provider && config.newsapi?.key) ||
@@ -242,7 +244,12 @@ const SettingsModal = () => {
         evDeviceIds: form.tibberEvDeviceIds || [],
       },
       newsapi: {
-        provider: form.newsProvider || 'newsdata',
+        provider: form.newsProvider || 'rss',
+        rssFeeds: form.newsRssFeeds || '',
+        keywords: (form.newsKeywords || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
         keys: {
           newsdata: form.newsKeyNewsdata || '',
           thenewsapi: form.newsKeyThenewsapi || '',
@@ -340,25 +347,15 @@ const SettingsModal = () => {
       console.warn('Error saving settings:', err);
     }
 
-    // Check if news settings changed
-    const activeProvider = form.newsProvider || 'newsdata';
-    const activeKey = newConfig.newsapi?.keys?.[activeProvider] || '';
+    // A spurious mismatch only costs one extra fetch
     const newsChanged =
-      form.newsProvider !== (config.newsapi?.provider || 'newsdata') ||
-      form.newsKeyNewsdata !== (config.newsapi?.keys?.newsdata || '') ||
-      form.newsKeyThenewsapi !== (config.newsapi?.keys?.thenewsapi || '') ||
-      form.newsKeyCurrents !== (config.newsapi?.keys?.currents || '') ||
-      form.newsKeyNewsapiorg !== (config.newsapi?.keys?.newsapiorg || '') ||
-      form.newsSources !== (config.newsapi?.headlines?.sources || '') ||
-      form.newsLanguage !== (config.newsapi?.headlines?.language || 'en') ||
-      form.newsCategories !== (config.newsapi?.headlines?.categories || []).join(',') ||
-      form.newsExclude !== (config.newsapi?.exclude || []).join(', ');
+      JSON.stringify(newConfig.newsapi) !== JSON.stringify(config.newsapi);
 
     setConfig(newConfig);
     setKeepAwake(form.keepAwake);
     setSettingsVisible(false);
 
-    if (newsChanged && activeKey) {
+    if (newsChanged) {
       fetchNews(newConfig).then((articles) => {
         if (articles) setArticles(articles);
       }).catch(() => {});
