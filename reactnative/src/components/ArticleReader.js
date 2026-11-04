@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform} from 'react-native';
 import {WebView} from 'react-native-webview';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {translate} from '../utils/translations';
@@ -189,12 +189,15 @@ const ArticleReader = ({article, lang, onClose}) => {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => Linking.openURL(pageUrl)}
-          hitSlop={8}>
-          <Icon name="open-in-new" size={22} color="#9a9ab8" />
-        </TouchableOpacity>
+        {/* A new window in the kiosk would cover the dashboard with no way back */}
+        {Platform.OS !== 'web' ? (
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => Linking.openURL(pageUrl)}
+            hitSlop={8}>
+            <Icon name="open-in-new" size={22} color="#9a9ab8" />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={12}>
           <Icon name="close" size={30} color="#ffffff" />
         </TouchableOpacity>

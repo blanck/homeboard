@@ -17,6 +17,11 @@ xset -display :0.0 dpms force on; xset -display :0.0 -dpms
 pkill chromium 2>/dev/null && sleep 2
 
 [ "$1" = "--restart" ] || sleep 8
+
+# A power-cut or reboot marks the profile as crashed, and Chromium then opens a
+# stray New Tab window over the --app window on the next start
+PREFS="$HOME/.config/chromium/Default/Preferences"
+[ -f "$PREFS" ] && sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"[^"]*"/"exit_type":"Normal"/' "$PREFS"
 # GPU flags: chromium 92 blocklists compositing on the Pi otherwise.
 # Console logging + localhost-only DevTools port make the kiosk debuggable:
 # app console.warn ends up in ~/.config/chromium/chrome_debug.log

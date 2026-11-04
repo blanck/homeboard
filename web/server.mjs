@@ -118,6 +118,9 @@ const forwardRequest = (target, method, headers, body, res, redirectsLeft) => {
       for (const [name, value] of Object.entries(up.headers)) {
         if (!STRIP_RESPONSE_HEADERS.has(name.toLowerCase())) respHeaders[name] = value;
       }
+      // Redirects are followed here, so the page only learns the final URL from this
+      respHeaders['x-proxy-final-url'] = targetUrl.toString();
+      respHeaders['access-control-expose-headers'] = 'x-proxy-final-url';
       res.writeHead(status, respHeaders);
       up.pipe(res);
     },
@@ -394,6 +397,18 @@ const handleLegacyConfig = async (res) => {
   res.end(JSON.stringify({legacy, sonosIp}));
 };
 
+// The address a phone on the same Wi-Fi reaches this Pi at, for the setup QR code.
+// VPN interfaces (ZeroTier zt* or feth* on macOS, tun, docker) use private ranges too but are not the LAN
+const lanAddresses = () =>
+  Object.entries(os.networkInterfaces())
+    .filter(([name]) => !/^(zt|feth|utun|tun|tap|docker|br-|veth)/.test(name))
+    .flatMap(([name, addrs]) =>
+      (addrs || [])
+        .filter((a) => (a.family === 'IPv4' || a.family === 4) && !a.internal)
+        .filter((a) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address))
+        .map((a) => ({ip: a.address, iface: name})),
+    );
+
 // --- Kiosk system controls ---------------------------------------------------
 // Ported from the legacy server.js socket handlers (sleep/reboot/restart).
 
@@ -417,10 +432,80 @@ const SYSTEM_COMMANDS = {
   reboot: 'sudo reboot',
 };
 
+// Per-Pi override, kept out of deploys: some panels only blank with the legacy
+// `s activate; tvservice -p`, e.g. {"sleep": "...", "wake": "..."}
+const KIOSK_LOCAL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'kiosk.local.json');
+try {
+  const local = JSON.parse(fs.readFileSync(KIOSK_LOCAL, 'utf8'));
+  for (const k of ['sleep', 'wake']) {
+    if (typeof local[k] === 'string') SYSTEM_COMMANDS[k] = local[k];
+  }
+  console.log('kiosk.local.json: overriding', Object.keys(local).join(', '));
+} catch (e) {
+  if (e.code !== 'ENOENT') console.warn('kiosk.local.json ignored:', e.message);
+}
+
 // A sleep tick that lands right after a touch-triggered wake would re-blank
 // the panel the user just woke; wakes win for a grace period
 const WAKE_GRACE_MS = 20 * 1000;
+// Matches the page's 30 s idle check, for touches the page never saw
+const TOUCH_IDLE_MS = 30 * 1000;
 let lastWakeAt = 0;
+let lastTouchAt = 0;
+let asleep = false;
+
+const log = (...args) => console.log(new Date().toISOString(), ...args);
+
+const wakeScreen = (reason) => {
+  lastWakeAt = Date.now();
+  asleep = false;
+  log('wake via', reason);
+  exec(SYSTEM_COMMANDS.wake, (err) => {
+    if (err) console.warn(`system wake failed: ${err.message}`);
+  });
+};
+
+// Reads the touchscreen straight from evdev, so a touch wakes the panel even
+// when X or Chromium stop delivering it (a blanked panel once stayed dead all night)
+const TOUCH_RETRY_MS = 10 * 1000;
+const TOUCH_LOG_GAP_MS = 5 * 60 * 1000;
+const findTouchDevice = () => {
+  if (process.env.HOMEBOARD_TOUCH_DEVICE) return process.env.HOMEBOARD_TOUCH_DEVICE;
+  try {
+    const dir = '/dev/input/by-id';
+    const name = fs.readdirSync(dir).find((f) => /touch/i.test(f) && /-event-/.test(f));
+    return name ? path.join(dir, name) : null;
+  } catch {
+    return null;
+  }
+};
+let touchMissingLogged = false;
+const watchTouch = () => {
+  const device = findTouchDevice();
+  if (!device) {
+    if (!touchMissingLogged) log('touch: no touchscreen device found, retrying');
+    touchMissingLogged = true;
+    setTimeout(watchTouch, TOUCH_RETRY_MS);
+    return;
+  }
+  touchMissingLogged = false;
+  log('touch: watching', device);
+  const stream = fs.createReadStream(device, {highWaterMark: 1024});
+  stream.on('data', () => {
+    const now = Date.now();
+    if (now - lastTouchAt > TOUCH_LOG_GAP_MS) log('touch: input seen');
+    lastTouchAt = now;
+    if (asleep) wakeScreen('touch (evdev)');
+  });
+  const retry = (why) => {
+    log('touch: device lost:', why);
+    stream.destroy();
+    setTimeout(watchTouch, TOUCH_RETRY_MS);
+  };
+  stream.once('error', (e) => retry(e.message));
+  stream.once('end', () => retry('closed'));
+};
+if (process.platform === 'linux') watchTouch();
 
 const handleSystem = (req, res, action) => {
   if (req.method !== 'POST') {
@@ -428,15 +513,27 @@ const handleSystem = (req, res, action) => {
     res.end();
     return;
   }
-  console.log(new Date().toISOString(), 'system', action, 'from', req.socket.remoteAddress);
   if (action === 'wake') {
-    lastWakeAt = Date.now();
+    wakeScreen(`page (${req.socket.remoteAddress})`);
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end('{"ok":true}');
+    return;
+  }
+  if (action === 'sleep' && Date.now() - lastTouchAt < TOUCH_IDLE_MS) {
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end('{"ok":true,"skipped":"recent-touch"}');
+    return;
   }
   if (action === 'sleep' && Date.now() - lastWakeAt < WAKE_GRACE_MS) {
     res.writeHead(200, {'Content-Type': 'application/json'});
     res.end('{"ok":true,"skipped":"wake-grace"}');
     return;
   }
+  // Only log transitions; the page sends a sleep tick every minute all night
+  if (action !== 'sleep' || !asleep) {
+    log('system', action, 'from', req.socket.remoteAddress);
+  }
+  if (action === 'sleep') asleep = true;
   if (action === 'restart') {
     // pm2 restarts the process after a clean exit
     res.writeHead(200, {'Content-Type': 'application/json'});
@@ -473,6 +570,7 @@ const STORE_KEYS = new Set([
   'tibber_data_api_tokens',
   'lamarzocco_tokens',
   'lamarzocco_install_key',
+  'lamarzocco_credentials',
 ]);
 
 const readStore = () => {
@@ -547,6 +645,16 @@ const server = http.createServer((req, res) => {
       return;
     }
     handleSystem(req, res, requestUrl.pathname.slice('/system/'.length));
+    return;
+  }
+  if (requestUrl.pathname === '/lan-address') {
+    if (!isPrivateAddress(req.socket.remoteAddress)) {
+      res.writeHead(403);
+      res.end('LAN only');
+      return;
+    }
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({addresses: lanAddresses(), port: PORT}));
     return;
   }
   if (requestUrl.pathname === '/tuya/scan') {

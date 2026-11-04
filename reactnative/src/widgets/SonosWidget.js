@@ -1,12 +1,14 @@
-import React, {useEffect, useRef, useCallback} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, Image} from 'react-native';
+import React, {useEffect, useRef, useCallback, useState} from 'react';
+import {View, Text, StyleSheet, TouchableOpacity, Image, Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import useStore from '../store';
 import * as sonosService from '../services/sonosService';
 import {fs, sp} from '../utils/scale';
+import {translate} from '../utils/translations';
 
 const SONOS_UUID_KEY = 'sonos_known_uuid';
+const QUEUE_RESET_INTERVAL_MS = 60000;
 
 const SonosWidget = () => {
   const sonos = useStore((s) => s.sonos);
@@ -17,9 +19,13 @@ const SonosWidget = () => {
   const setSonosShuffle = useStore((s) => s.setSonosShuffle);
   const incrementSonosPosition = useStore((s) => s.incrementSonosPosition);
   const showGroupVolume = useStore((s) => s.showGroupVolume);
+  const lang = useStore((s) => s.config.language || 'en');
+  const [roomName, setRoomName] = useState(null);
 
   const volumeTimerRef = useRef(null);
+  const lastQueueResetRef = useRef(0);
   const volumeBarRef = useRef(null);
+  const volumeTouchRef = useRef(0);
   const inFlightRef = useRef(false);
   const failuresRef = useRef(0);
   const rediscoveringRef = useRef(false);
@@ -85,7 +91,9 @@ const SonosWidget = () => {
         let [track, state, volume, playMode] = await Promise.all([
           sonosService.getCurrentTrack(sonosIp),
           sonosService.getTransportState(sonosIp),
-          sonosService.getVolume(sonosIp),
+          sonosService
+            .getGroupVolumes(sonosIp)
+            .then((g) => (g.volumes.length ? Math.round(sonosService.averageVolume(g.volumes)) : null)),
           sonosService.getPlayMode(sonosIp),
         ]);
         if (track?.grouped) {
@@ -117,8 +125,23 @@ const SonosWidget = () => {
         failuresRef.current = 0;
         if (track && !track.grouped) setSonosTrack(track);
         if (state) setSonosState(state);
-        if (volume != null) setSonosVolume(volume);
+        // A poll that started mid-drag would snap the bar back
+        if (volume != null && Date.now() - volumeTouchRef.current > 2500) setSonosVolume(volume);
         if (playMode) setSonosShuffle(playMode.includes('SHUFFLE'));
+        // A Spotify Connect session that moved away can leave the transport on no
+        // source at all; point it back at its own queue so play and enqueue work
+        const controlIp = coordinatorIpRef.current || sonosIp;
+        if (
+          sonosService.isIdleTrack(track) &&
+          state === 'stopped' &&
+          Date.now() - lastQueueResetRef.current > QUEUE_RESET_INTERVAL_MS
+        ) {
+          lastQueueResetRef.current = Date.now();
+          sonosService
+            .getMediaInfo(controlIp)
+            .then((info) => (info && !info.uri ? sonosService.selectQueue(controlIp) : null))
+            .catch((e) => console.warn('[poll selectQueue]', e?.message || String(e)));
+        }
         // Persist UUID for future rediscovery — runs once on first success or after recovery
         if (!persistedUuidRef.current || wasFailing) {
           sonosService.getDeviceUUID(sonosIp)
@@ -139,6 +162,18 @@ const SonosWidget = () => {
     const timer = setInterval(poll, 5000);
     return () => clearInterval(timer);
   }, [sonosIp, setSonosTrack, setSonosState, setSonosVolume, setSonosShuffle, rediscover]);
+
+  useEffect(() => {
+    setRoomName(null);
+    if (!sonosIp) return;
+    let cancelled = false;
+    sonosService.getDeviceDetails(sonosIp).then((d) => {
+      if (!cancelled && d?.room) setRoomName(d.room);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sonosIp]);
 
   // Track position counter
   useEffect(() => {
@@ -172,28 +207,95 @@ const SonosWidget = () => {
     }
   }, [sonosIp, sonos.shuffle, setSonosShuffle]);
 
-  const volumeDown = useCallback(() => {
-    if (sonosIp) {
-      sonosService.adjustVolume(sonosIp, -2);
-    }
-  }, [sonosIp]);
-
-  const volumeUp = useCallback(() => {
-    if (sonosIp) {
-      sonosService.adjustVolume(sonosIp, 2);
-    }
-  }, [sonosIp]);
+  const stepVolume = useCallback(
+    (delta) => {
+      if (!sonosIp) return;
+      volumeTouchRef.current = Date.now();
+      setSonosVolume(Math.max(0, Math.min(100, useStore.getState().sonos.volume + delta)));
+      sonosService.adjustGroupVolume(sonosIp, delta);
+    },
+    [sonosIp, setSonosVolume],
+  );
+  const volumeDown = useCallback(() => stepVolume(-2), [stepVolume]);
+  const volumeUp = useCallback(() => stepVolume(2), [stepVolume]);
 
   const startVolumeRepeat = useCallback(
     (delta) => {
-      volumeTimerRef.current = setInterval(() => {
-        if (sonosIp) {
-          sonosService.adjustVolume(sonosIp, delta);
-        }
-      }, 300);
+      volumeTimerRef.current = setInterval(() => stepVolume(delta), 300);
     },
-    [sonosIp],
+    [stepVolume],
   );
+
+  // Drag on the bar sets the group volume; a tap without moving opens the popup
+  const dragRef = useRef(null);
+  const sendDragVolume = useCallback(() => {
+    const d = dragRef.current;
+    if (!d || !d.base || d.target == null || d.sending) return;
+    d.sending = true;
+    const {ips, volumes} = d.base;
+    const target = d.target;
+    sonosService
+      .setGroupVolumes(ips, sonosService.offsetVolumes(volumes, target - sonosService.averageVolume(volumes)))
+      .finally(() => {
+        d.sending = false;
+        if (d.target !== target) setTimeout(sendDragVolume, 120);
+      });
+  }, []);
+
+  const dragTo = useCallback(
+    (pageX) => {
+      const d = dragRef.current;
+      if (!d || !d.geom || !d.geom.width) return;
+      const target = Math.max(0, Math.min(100, Math.round(((pageX - d.geom.x) / d.geom.width) * 100)));
+      d.target = target;
+      volumeTouchRef.current = Date.now();
+      setSonosVolume(target);
+      sendDragVolume();
+    },
+    [setSonosVolume, sendDragVolume],
+  );
+
+  const onVolumeGrant = useCallback(
+    (e) => {
+      const pageX = e.nativeEvent.pageX;
+      dragRef.current = {startX: pageX, moved: false, target: null, base: null, geom: null};
+      const d = dragRef.current;
+      volumeBarRef.current?.measureInWindow?.((x, y, width, height) => {
+        d.geom = {x, y, width, height};
+      });
+      if (sonosIp) {
+        sonosService.getGroupVolumes(sonosIp).then((base) => {
+          d.base = base.ips.length ? base : null;
+          sendDragVolume();
+        });
+      }
+    },
+    [sonosIp, sendDragVolume],
+  );
+
+  const onVolumeMove = useCallback(
+    (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const pageX = e.nativeEvent.pageX;
+      if (!d.moved && Math.abs(pageX - d.startX) < 6) return;
+      d.moved = true;
+      dragTo(pageX);
+    },
+    [dragTo],
+  );
+
+  const onVolumeRelease = useCallback(() => {
+    const d = dragRef.current;
+    if (d && !d.moved) {
+      if (d.geom) showGroupVolume(d.geom);
+      else if (volumeBarRef.current?.measureInWindow) {
+        volumeBarRef.current.measureInWindow((x, y, width, height) =>
+          showGroupVolume({x, y, width, height}),
+        );
+      } else showGroupVolume(null);
+    }
+  }, [showGroupVolume]);
 
   const stopVolumeRepeat = useCallback(() => {
     if (volumeTimerRef.current) {
@@ -208,6 +310,31 @@ const SonosWidget = () => {
     sonos.track && sonos.track.duration > 0
       ? (sonos.position / sonos.track.duration) * 100
       : 0;
+
+  if (sonosService.isIdleTrack(sonos.track) && sonos.state !== 'playing') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.row}>
+          <View style={[styles.albumArt, styles.idleArt]}>
+            <Icon name="speaker" size={sp(44)} color="#666666" />
+          </View>
+          <View style={styles.infoCol}>
+            <Text style={styles.trackTitle} numberOfLines={1}>
+              {translate('nothingPlaying', lang)}
+            </Text>
+            {roomName || sonosGroup ? (
+              <Text style={styles.artist} numberOfLines={1}>
+                {roomName || sonosGroup}
+              </Text>
+            ) : null}
+            <Text style={[styles.album, styles.idleHint]} numberOfLines={2}>
+              {translate('nothingPlayingHint', lang)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -247,27 +374,24 @@ const SonosWidget = () => {
                 onPressOut={stopVolumeRepeat}>
                 <Icon name="volume-down" size={22} color="#ffffff" />
               </TouchableOpacity>
-              <TouchableOpacity
+              <View
                 ref={volumeBarRef}
-                style={styles.volumeBar}
-                hitSlop={{top: 14, bottom: 14}}
-                onPress={() => {
-                  const ref = volumeBarRef.current;
-                  if (ref?.measureInWindow) {
-                    ref.measureInWindow((x, y, width, height) =>
-                      showGroupVolume({x, y, width, height}),
-                    );
-                  } else {
-                    showGroupVolume(null);
-                  }
-                }}>
-                <View
-                  style={[
-                    styles.volumeFill,
-                    {width: `${Math.min(sonos.volume, 100)}%`},
-                  ]}
-                />
-              </TouchableOpacity>
+                style={styles.volumeTouch}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderTerminationRequest={() => false}
+                onResponderGrant={onVolumeGrant}
+                onResponderMove={onVolumeMove}
+                onResponderRelease={onVolumeRelease}>
+                <View style={styles.volumeBar}>
+                  <View
+                    style={[
+                      styles.volumeFill,
+                      {width: `${Math.min(sonos.volume, 100)}%`},
+                    ]}
+                  />
+                </View>
+              </View>
               <TouchableOpacity
                 onPress={volumeUp}
                 onLongPress={() => startVolumeRepeat(1)}
@@ -331,6 +455,15 @@ const styles = StyleSheet.create({
   placeholder: {
     backgroundColor: '#333333',
   },
+  idleArt: {
+    backgroundColor: '#1e1e1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  idleHint: {
+    color: '#999999',
+  },
   infoCol: {
     flex: 1,
   },
@@ -366,12 +499,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: sp(10),
   },
-  volumeBar: {
+  // Tall finger target around the thin bar; touchAction stops the browser panning mid-drag
+  volumeTouch: {
     flex: 1,
+    height: sp(32),
+    marginHorizontal: 8,
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? {touchAction: 'none'} : null),
+  },
+  volumeBar: {
     height: 3,
     backgroundColor: '#444444',
     borderRadius: 2,
-    marginHorizontal: 8,
     justifyContent: 'center',
   },
   volumeFill: {

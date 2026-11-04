@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <link rel="icon" href="data:," />
     <title>Homeboard</title>
     <style>
@@ -14,6 +14,8 @@
         padding: 0;
         overflow: hidden;
         background: #000;
+        touch-action: pan-x pan-y;
+        -webkit-text-size-adjust: 100%;
       }
       #root {
         display: flex;
@@ -28,6 +30,19 @@
         user-select: text;
       }
     </style>
+    <script>
+      // iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom here
+      document.addEventListener('gesturestart', (e) => e.preventDefault());
+      let lastTouchEnd = 0;
+      document.addEventListener(
+        'touchend',
+        (e) => {
+          if (e.timeStamp - lastTouchEnd < 300) e.preventDefault();
+          lastTouchEnd = e.timeStamp;
+        },
+        {passive: false},
+      );
+    </script>
   </head>
   <body>
     <div id="root"></div>

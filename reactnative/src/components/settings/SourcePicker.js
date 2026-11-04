@@ -6,6 +6,7 @@ import {
   fetchTheNewsApiSources,
   fetchNewsdataSources,
   fetchCurrentsSources,
+  fetchNewsApiOrgSources,
 } from '../../services/newsService';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -14,6 +15,7 @@ const FETCHERS = {
   newsdata: {fn: fetchNewsdataSources, cacheKey: 'homeboard_newsdata_sources'},
   thenewsapi: {fn: fetchTheNewsApiSources, cacheKey: 'homeboard_thenewsapi_sources'},
   currents: {fn: fetchCurrentsSources, cacheKey: 'homeboard_currents_sources'},
+  newsapiorg: {fn: fetchNewsApiOrgSources, cacheKey: 'homeboard_newsapiorg_sources'},
 };
 
 const SourcePicker = ({value, onChange, apiKey, language, provider = 'thenewsapi'}) => {

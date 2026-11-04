@@ -63,6 +63,17 @@ echo "@sh /home/pi/homeboard-web/start-kiosk.sh &" | sudo tee -a /etc/xdg/lxsess
 
 `start-kiosk.sh` only preps the display and launches Chromium at `http://localhost:8080`; pm2's systemd unit resurrects the server. (`start.sh` is the variant for Pis that can build on-device: it also pulls master and rebuilds on every boot.)
 
+Screen sleep differs per monitor. The default blanks via the X screensaver only. If the panel stays lit, put the legacy commands in `~/homeboard-web/kiosk.local.json` (deploys never overwrite it) and restart the pm2 process:
+
+```json
+{
+  "sleep": "export DISPLAY=:0; sleep 1; xset -display :0.0 s activate; /usr/bin/tvservice -p",
+  "wake": "export DISPLAY=:0; xset -display :0.0 s off; xset -display :0.0 dpms force on; xset -display :0.0 -dpms"
+}
+```
+
+The server also reads the touchscreen through evdev and wakes the screen on any touch, even if Chromium misses it.
+
 ### Migrating from the legacy web app
 
 ```sh

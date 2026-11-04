@@ -398,6 +398,15 @@ export async function fetchMachines() {
 
   const headers = createAuthHeaders(auth.installKey, auth.token);
   const res = await fetch(`${BASE_URL}/things`, {headers});
+  if (res.status === 403) {
+    const body = await res.json().catch(() => ({}));
+    // New terms in the La Marzocco app block the whole API until accepted there
+    if (body.code === 'USER_MUST_ACCEPT_POLICY') {
+      const err = new Error('lmAcceptPolicy');
+      err.code = 'USER_MUST_ACCEPT_POLICY';
+      throw err;
+    }
+  }
   if (!res.ok) return null;
 
   const things = await res.json();
@@ -439,6 +448,7 @@ export async function fetchLaMarzoccoStatus(serialNumber) {
   const steamBoiler =
     widgets.find((w) => w.code === 'CMSteamBoilerTemperature') ||
     widgets.find((w) => w.code === 'CMSteamBoilerLevel');
+  const backFlush = widgets.find((w) => w.code === 'CMBackFlush');
 
   return {
     connected: data.connected,
@@ -451,6 +461,8 @@ export async function fetchLaMarzoccoStatus(serialNumber) {
           status: coffeeBoiler.output.status,
           enabled: coffeeBoiler.output.enabled,
           temperature: coffeeBoiler.output.targetTemperature,
+          min: coffeeBoiler.output.targetTemperatureMin ?? 80,
+          max: coffeeBoiler.output.targetTemperatureMax ?? 100,
           ready: coffeeBoiler.output.status === 'Ready',
         }
       : null,
@@ -458,31 +470,58 @@ export async function fetchLaMarzoccoStatus(serialNumber) {
       ? {
           status: steamBoiler.output.status,
           enabled: steamBoiler.output.enabled,
+          canToggle: steamBoiler.output.enabledSupported !== false,
           level: steamBoiler.output.targetLevel || null,
           temperature: steamBoiler.output.targetTemperature || null,
+        }
+      : null,
+    backflush: backFlush
+      ? {
+          status: backFlush.output.status,
+          lastCleaned: backFlush.output.lastCleaningStartTime || null,
         }
       : null,
   };
 }
 
-export async function toggleLaMarzoccoMode(serialNumber, mode) {
+// True means the cloud queued the command, not that the machine has run it
+async function sendCommand(serialNumber, command, body) {
   if (!serialNumber) return false;
 
-  const auth = await getValidToken();
-  if (!auth) return false;
+  try {
+    const auth = await getValidToken();
+    if (!auth) return false;
 
-  const headers = createAuthHeaders(auth.installKey, auth.token);
-  const res = await fetch(
-    `${BASE_URL}/things/${serialNumber}/command/CoffeeMachineChangeMode`,
-    {
+    const headers = createAuthHeaders(auth.installKey, auth.token);
+    const res = await fetch(`${BASE_URL}/things/${serialNumber}/command/${command}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({mode}),
-    },
-  );
-
-  return res.ok;
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
+
+export const toggleLaMarzoccoMode = (serialNumber, mode) =>
+  sendCommand(serialNumber, 'CoffeeMachineChangeMode', {mode});
+
+export const setLaMarzoccoSteam = (serialNumber, enabled) =>
+  sendCommand(serialNumber, 'CoffeeMachineSettingSteamBoilerEnabled', {boilerIndex: 1, enabled});
+
+export const setLaMarzoccoSteamLevel = (serialNumber, targetLevel) =>
+  sendCommand(serialNumber, 'CoffeeMachineSettingSteamBoilerTargetLevel', {boilerIndex: 1, targetLevel});
+
+export const setLaMarzoccoCoffeeTemperature = (serialNumber, temperature) =>
+  sendCommand(serialNumber, 'CoffeeMachineSettingCoffeeBoilerTargetTemperature', {
+    boilerIndex: 1,
+    targetTemperature: Math.round(temperature * 10) / 10,
+  });
+
+// The only flush the cloud can trigger; a plain group flush needs the paddle
+export const startLaMarzoccoBackflush = (serialNumber) =>
+  sendCommand(serialNumber, 'CoffeeMachineBackFlushStartCleaning', {enabled: true});
 
 export async function clearLaMarzoccoAuth() {
   try {

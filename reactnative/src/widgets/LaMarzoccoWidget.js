@@ -34,6 +34,7 @@ const LaMarzoccoWidget = () => {
   const lamarzocco = useStore((s) => s.lamarzocco);
   const config = useStore((s) => s.config);
   const setLaMarzocco = useStore((s) => s.setLaMarzocco);
+  const showPopup = useStore((s) => s.showLaMarzoccoPopup);
   const [toggling, setToggling] = useState(false);
 
   if (!lamarzocco) return null;
@@ -58,21 +59,23 @@ const LaMarzoccoWidget = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>
-        {config.smartDevices?.lamarzocco?.machineName || 'La Marzocco'}
-      </Text>
-      <View style={styles.icon}>
-        <CoffeeMachineIcon size={36} color={statusColor(lamarzocco.status)} />
-      </View>
-      {boilerTemp ? (
-        <Text style={styles.temp}>{boilerTemp}°C</Text>
-      ) : null}
-      <Text style={[styles.status, {color: statusColor(lamarzocco.status)}]}>
-        {statusLabel(lamarzocco.status)}
-      </Text>
-      {lamarzocco.coffeeBoiler && lamarzocco.coffeeBoiler.status === 'HeatingUp' ? (
-        <Text style={styles.boilerStatus}>◐ Heating</Text>
-      ) : null}
+      <TouchableOpacity style={styles.machine} activeOpacity={0.7} onPress={showPopup}>
+        <Text style={styles.label}>
+          {config.smartDevices?.lamarzocco?.machineName || 'La Marzocco'}
+        </Text>
+        <View style={styles.icon}>
+          <CoffeeMachineIcon size={36} color={statusColor(lamarzocco.status)} />
+        </View>
+        {boilerTemp ? (
+          <Text style={styles.temp}>{boilerTemp}°C</Text>
+        ) : null}
+        <Text style={[styles.status, {color: statusColor(lamarzocco.status)}]}>
+          {statusLabel(lamarzocco.status)}
+        </Text>
+        {lamarzocco.coffeeBoiler && lamarzocco.coffeeBoiler.status === 'HeatingUp' ? (
+          <Text style={styles.boilerStatus}>◐ Heating</Text>
+        ) : null}
+      </TouchableOpacity>
       <TouchableOpacity
         style={[styles.toggleBtn, isOn && styles.toggleBtnOn]}
         onPress={handleToggle}
@@ -91,6 +94,10 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'flex-start',
+  },
+  machine: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
   },
   label: {
     color: '#ffffff',

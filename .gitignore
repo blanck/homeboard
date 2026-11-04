@@ -43,3 +43,7 @@ config.js
 test.js
 web/dist/
 .firebase/
+
+# web kiosk runtime state (holds secrets) and per-Pi overrides
+web/settings-store.json
+web/kiosk.local.json

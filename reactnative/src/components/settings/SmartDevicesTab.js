@@ -1,8 +1,8 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, TextInput, Switch} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {translate} from '../../utils/translations';
-import {loginLaMarzocco, clearLaMarzoccoAuth} from '../../services/lamarzoccoService';
+import {loginLaMarzocco, clearLaMarzoccoAuth, fetchMachines} from '../../services/lamarzoccoService';
 import DropdownPicker from './DropdownPicker';
 import {canScanTuya, scanTuyaDevices, mergeTuyaDevices} from '../../services/tuyaService';
 
@@ -11,7 +11,7 @@ const DEVICE_TYPES = [
   {label: 'La Marzocco', value: 'lamarzocco'},
 ];
 
-const SmartDevicesTab = ({form, updateField, lang, Section, Field, Row}) => {
+const SmartDevicesTab = ({form, updateField, onApply, lang, Section, Field, Row}) => {
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +46,35 @@ const SmartDevicesTab = ({form, updateField, lang, Section, Field, Row}) => {
   const hasLM = selectedDevice === 'lamarzocco';
   const isConnected = hasLM && !!form.lmSerialNumber;
 
+  const pickMachine = (m) => {
+    const changes = {
+      smartDeviceType: 'lamarzocco',
+      lmSerialNumber: m.serialNumber,
+      lmMachineName: m.name || m.model || 'La Marzocco',
+      lmShowWidget: true,
+    };
+    Object.entries(changes).forEach(([k, v]) => updateField(k, v));
+    // Save now: on a phone the Pi only sees it once saved
+    onApply?.(changes);
+  };
+
+  // A login shared from another device lists the machines without logging in here
+  useEffect(() => {
+    if (!hasLM) return;
+    let live = true;
+    fetchMachines()
+      .then((list) => {
+        if (!live || !list?.length) return;
+        setMachines(list);
+        if (!form.lmSerialNumber) pickMachine(list[0]);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLM]);
+
   const handleLogin = async () => {
     if (!email || !password) return false;
     setLoading(true);
@@ -54,17 +83,19 @@ const SmartDevicesTab = ({form, updateField, lang, Section, Field, Row}) => {
       const result = await loginLaMarzocco(email, password);
       if (result && result.length > 0) {
         setMachines(result);
-        if (result.length === 1) {
-          updateField('lmSerialNumber', result[0].serialNumber);
-          updateField('lmMachineName', result[0].name || result[0].model || 'La Marzocco');
-        }
+        // Pick a machine right away (changeable below): an unpicked one left the widget off
+        pickMachine(result.find((m) => m.serialNumber === form.lmSerialNumber) || result[0]);
         setLoading(false);
         return true;
       } else {
         setError(translate('noDevicesFound', lang));
       }
     } catch (err) {
-      setError(err.message || 'Login failed');
+      setError(
+        err.code === 'USER_MUST_ACCEPT_POLICY'
+          ? translate('lmAcceptPolicy', lang)
+          : err.message || 'Login failed',
+      );
     }
     setLoading(false);
     return false;
@@ -132,9 +163,8 @@ const SmartDevicesTab = ({form, updateField, lang, Section, Field, Row}) => {
                 value: m.serialNumber,
               }))}
               onValueChange={(v) => {
-                updateField('lmSerialNumber', v);
                 const m = machines.find((x) => x.serialNumber === v);
-                if (m) updateField('lmMachineName', m.name || m.model);
+                if (m) pickMachine(m);
               }}
             />
           )}

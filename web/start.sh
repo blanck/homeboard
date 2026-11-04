@@ -16,6 +16,10 @@ pm2 restart homeboard-web 2>/dev/null || pm2 start ~/homeboard/web/server.mjs --
 pm2 save
 
 sleep 10
+# A power-cut or reboot marks the profile as crashed, and Chromium then opens a
+# stray New Tab window over the --app window on the next start
+PREFS="$HOME/.config/chromium/Default/Preferences"
+[ -f "$PREFS" ] && sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"[^"]*"/"exit_type":"Normal"/' "$PREFS"
 # localhost is the canonical kiosk origin; the OAuth forwarder pages on
 # Firebase Hosting return callbacks to http://localhost:8080
 chromium-browser --kiosk --start-fullscreen --noerrdialogs \

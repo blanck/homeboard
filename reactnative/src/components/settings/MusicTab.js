@@ -9,8 +9,10 @@ import {getZoneGroups, getCoordinatorIp, getSonosFavorites, getSonosPlaylists, g
 import {startOAuthFlow as startSpotifyOAuth, isSpotifyConnected, clearTokens as clearSpotifyTokens, CLIENT_ID as SPOTIFY_CLIENT_ID, searchSpotify} from '../../services/spotifyOAuthService';
 import {openOAuthWindow} from '../../utils/oauthPopup';
 import {useNativeClick, nativeOnlyPress} from '../../utils/nativeClick';
+import {useCompact} from './compact';
 
 const MusicTab = ({form, updateField, lang, Section, Field}) => {
+  const compact = useCompact();
   const [groupOptions, setGroupOptions] = useState([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [favorites, setFavorites] = useState([]);
@@ -223,7 +225,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   return (
     <View style={styles.root}>
       <Section title="Sonos">
-        <View style={styles.sonosRow}>
+        <View style={[styles.sonosRow, compact && styles.stack]}>
           <View style={styles.sonosLeft}>
             {loadingGroups ? (
               <View style={styles.loadingRow}>
@@ -253,7 +255,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
               />
             )}
 
-            <View style={styles.scannerSpotifyRow}>
+            <View style={[styles.scannerSpotifyRow, compact && styles.stack]}>
               <View style={styles.scannerCol}>
                 {form.sonosName ? (
                   <Text style={styles.selectedDevice}>
@@ -273,7 +275,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
                 />
               </View>
 
-              <View style={styles.spotifyInline}>
+              <View style={[styles.spotifyInline, compact && styles.spotifyStacked]}>
                 <Text style={styles.spotifyLabel}>{translate('spotifySearch', lang)}</Text>
                 {!SPOTIFY_CLIENT_ID ? (
                   <Text style={styles.howto}>{translate('spotifyClientIdMissing', lang)}</Text>
@@ -300,7 +302,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
             </View>
           </View>
 
-          <View style={styles.sonosRight}>
+          <View style={compact ? null : styles.sonosRight}>
             <Field
               label={translate('sonosIp', lang)}
               value={form.sonosIp}
@@ -318,11 +320,11 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
       </Section>
 
       <Section title={translate('quickPicks', lang)} style={{flex: 1}}>
-        <View style={styles.panelRow}>
+        <View style={[styles.panelRow, compact && styles.stack]}>
           {/* Left: Categories */}
-          <View style={styles.categoriesPanel}>
+          <View style={[styles.categoriesPanel, compact && styles.stack]}>
             <Text style={styles.panelTitle}>{translate('categories', lang)}</Text>
-            <ScrollView style={styles.categoriesScroll} nestedScrollEnabled>
+            <ScrollView style={compact ? null : styles.categoriesScroll} nestedScrollEnabled>
               {quickPicks.map((category, catIndex) => (
                 <TouchableOpacity
                   key={catIndex}
@@ -422,7 +424,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
           </View>
 
           {/* Right: Favorites & Playlists */}
-          <View style={styles.favoritesPanel}>
+          <View style={[styles.favoritesPanel, compact && styles.stack]}>
             <View style={styles.favHeader}>
               <Text style={styles.panelTitle}>{translate('library', lang)}</Text>
               {selectedCategory !== null && form.sonosIp ? (
@@ -455,7 +457,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
               autoCorrect={false}
             />
 
-            <ScrollView style={styles.favScroll} nestedScrollEnabled>
+            <ScrollView style={[styles.favScroll, compact && styles.favScrollStacked]} nestedScrollEnabled>
               {fetchingFavorites ? (
                 <View style={styles.loadingRow}>
                   <ActivityIndicator size="small" color="#cccccc" />
@@ -511,6 +513,9 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
 };
 
 const styles = StyleSheet.create({
+  stack: {flexDirection: 'column', alignItems: 'stretch', flex: 0},
+  spotifyStacked: {paddingLeft: 0, borderLeftWidth: 0, marginTop: 12},
+  favScrollStacked: {flex: 0, height: 360},
   sonosRow: {
     flexDirection: 'row',
     gap: 12,

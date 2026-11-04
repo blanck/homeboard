@@ -14,6 +14,8 @@ const SHARED_KEYS = new Set([
   'tibber_data_api_tokens',
   'lamarzocco_tokens',
   'lamarzocco_install_key',
+  // Lets the Pi sign in again when the refresh token lapses
+  'lamarzocco_credentials',
 ]);
 
 export const isShared = (key) => SHARED_KEYS.has(key);

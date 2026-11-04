@@ -73,6 +73,29 @@ export const fetchTheNewsApiSources = async (key, language) => {
     .filter((s) => s.id);
 };
 
+// Ids like bbc-news are what top-headlines takes in `sources`
+export const fetchNewsApiOrgSources = async (key, language) => {
+  if (!key) return null;
+  const params = new URLSearchParams({apiKey: key});
+  if (language) params.set('language', language);
+  const result = await fetchSourcesDebug(
+    `https://newsapi.org/v2/top-headlines/sources?${params}`,
+  );
+  if (result.error) return {error: result.error};
+  const data = result.data;
+  if (data?.status !== 'ok' || !Array.isArray(data.sources)) {
+    return {error: data?.message || 'Unexpected response shape'};
+  }
+  return data.sources
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      language: s.language,
+      categories: s.category ? [s.category] : [],
+    }))
+    .filter((s) => s.id);
+};
+
 const extractDomain = (urlOrHost) => {
   if (!urlOrHost) return '';
   try {

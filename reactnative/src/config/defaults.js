@@ -14,12 +14,23 @@ const defaults = {
   // stocks / energy prices / todo that has data
   rightModule: 'auto',
 
+  layout: {
+    slots: {}, // overrides the default grid, see utils/layout.js
+    tiles: {}, // tile key: false hides it from the home panel
+  },
+
+  units: 'auto', // 'auto' follows the device region, or 'metric', 'imperial'
+
   countdown: {
     title: 'Thailand',
     date: '2026-11-16', // YYYY-MM-DD
     time: '', // HH:MM local, empty = midnight
     imageUrl:
       'https://static.wixstatic.com/media/f6eb7e_ca361ed00bf744928455bca7c2bf24e0~mv2.jpg/v1/fill/w_2475,h_1650,al_c,q_90,usm_0.66_1.00_0.01,enc_auto/f6eb7e_ca361ed00bf744928455bca7c2bf24e0~mv2.jpg',
+  },
+
+  meals: {
+    days: {}, // 'YYYY-MM-DD': {name, url, image, ingredients, steps, servings, minutes}
   },
 
   chores: {

@@ -83,8 +83,14 @@ export const getDeviceDetails = async (ip) => {
     const text = await resp.text();
     const nameMatch = text.match(/<friendlyName>([^<]+)<\/friendlyName>/);
     const roomMatch = text.match(/<roomName>([^<]+)<\/roomName>/);
+    const modelMatch = text.match(/<modelName>([^<]+)<\/modelName>/);
     if (nameMatch) {
-      return {ip, name: nameMatch[1], room: roomMatch ? roomMatch[1] : null};
+      return {
+        ip,
+        name: nameMatch[1],
+        room: roomMatch ? roomMatch[1] : null,
+        model: modelMatch ? modelMatch[1] : null,
+      };
     }
     return null;
   } catch {
@@ -257,6 +263,10 @@ export const getCurrentTrack = async (ip) => {
   }
 };
 
+// Sonos still answers GetPositionInfo with nothing loaded, just with every field empty
+export const isIdleTrack = (track) =>
+  !!track && !track.grouped && !track.title && !track.artist && !track.duration;
+
 // Get volume
 export const getVolume = async (ip) => {
   try {
@@ -371,6 +381,43 @@ export const adjustVolume = async (ip, delta) => {
   const current = await getVolume(ip);
   if (current == null) return;
   return await setVolume(ip, current + delta);
+};
+
+// Group volume moves every speaker by the same step, so the balance between
+// rooms stays as set (what the Sonos app's group slider does)
+const clampVolume = (v) => Math.min(100, Math.max(0, Math.round(v)));
+export const offsetVolumes = (volumes, delta) => volumes.map((v) => clampVolume(v + delta));
+export const averageVolume = (volumes) =>
+  volumes.length ? volumes.reduce((sum, v) => sum + v, 0) / volumes.length : 0;
+
+const GROUP_CACHE_MS = 15000;
+const _groupCache = new Map();
+// Ips playing together with ip (just ip on its own); topology is cached briefly
+export const getGroupMemberIps = async (ip) => {
+  const hit = _groupCache.get(ip);
+  if (hit && Date.now() - hit.at < GROUP_CACHE_MS) return hit.ips;
+  const groups = await getZoneGroups(ip).catch(() => []);
+  const mine = (groups || []).find((g) => g.members.some((m) => m.ip === ip));
+  const ips = mine ? mine.members.map((m) => m.ip).filter(Boolean) : [ip];
+  _groupCache.set(ip, {ips, at: Date.now()});
+  return ips;
+};
+
+// {ips, volumes} of the group; speakers that do not answer are left out
+export const getGroupVolumes = async (ip) => {
+  const ips = await getGroupMemberIps(ip);
+  const volumes = await Promise.all(ips.map((m) => getVolume(m)));
+  const ok = ips.map((m, i) => [m, volumes[i]]).filter(([, v]) => v != null);
+  return {ips: ok.map(([m]) => m), volumes: ok.map(([, v]) => v)};
+};
+
+export const setGroupVolumes = (ips, volumes) =>
+  Promise.all(ips.map((m, i) => setVolume(m, volumes[i]).catch(() => null)));
+
+export const adjustGroupVolume = async (ip, delta) => {
+  const {ips, volumes} = await getGroupVolumes(ip);
+  if (!ips.length) return;
+  await setGroupVolumes(ips, offsetVolumes(volumes, delta));
 };
 
 // Find a Sonos-provided Spotify template URI + resMD by looking through the user's

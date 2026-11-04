@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useContext} from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Animated,
   Alert,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,18 +19,23 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import {translate} from '../utils/translations';
 import defaults from '../config/defaults';
+import {pruneMeals} from '../utils/meals';
 import {fetchNews} from '../services/newsService';
 import {fetchTibberPrices, fetchTibberDevices} from '../services/tibberService';
 import {fetchLaMarzoccoStatus} from '../services/lamarzoccoService';
 import GeneralTab from './settings/GeneralTab';
+import LayoutTab from './settings/LayoutTab';
 import WeatherTab from './settings/WeatherTab';
 import EnergyTab from './settings/EnergyTab';
 import NewsTab from './settings/NewsTab';
 import StocksTab from './settings/StocksTab';
 import ChoresTab from './settings/ChoresTab';
+import MealsTab from './settings/MealsTab';
 import CalendarTab from './settings/CalendarTab';
 import MusicTab from './settings/MusicTab';
 import SmartDevicesTab from './settings/SmartDevicesTab';
+import {migratePlaylists} from '../utils/quickPicks';
+import {CompactContext} from './settings/compact';
 import ShareTab from './settings/ShareTab';
 import PhoneSetupTab from './settings/PhoneSetupTab';
 
@@ -46,6 +52,12 @@ export const loadSettings = async () => {
 
     const settings = settingsStr ? JSON.parse(settingsStr) : {};
     const secrets = secretsStr ? JSON.parse(secretsStr) : {};
+
+    const migrated = migratePlaylists(settings);
+    if (migrated) {
+      Object.assign(settings, migrated);
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    }
 
     // Merge secrets into config
     return deepMerge(defaults, settings, secrets);
@@ -73,15 +85,20 @@ const deepMerge = (...objects) => {
   return result;
 };
 
+// Narrower than this (a phone) gets a section menu instead of the tab bar
+const COMPACT_WIDTH = 700;
+
 const TABS = [
+  // First: setting up from a phone beats typing on the wall screen
+  {key: 'phoneSetup', icon: 'qrcode-scan'},
   {key: 'general', icon: 'cog'},
-  // Browsers cannot host the setup server; the Pi has its own phone page
-  ...(Platform.OS === 'web' ? [] : [{key: 'phoneSetup', icon: 'qrcode-scan'}]),
+  {key: 'layout', icon: 'view-dashboard-outline'},
   {key: 'weather', icon: 'weather-partly-cloudy'},
   {key: 'energy', icon: 'flash'},
   {key: 'news', icon: 'newspaper'},
   {key: 'stocks', icon: 'chart-line'},
   {key: 'chores', icon: 'broom'},
+  {key: 'meals', icon: 'silverware-fork-knife'},
   {key: 'calendar', icon: 'calendar'},
   {key: 'music', icon: 'music'},
   {key: 'smartDevices', icon: 'devices'},
@@ -92,6 +109,17 @@ const SettingsModal = () => {
   const visible = useStore((s) => s.settingsVisible);
   const setSettingsVisible = useStore((s) => s.setSettingsVisible);
   const config = useStore((s) => s.config);
+  const isKioskDisplay = useStore((s) => s.isKioskDisplay);
+  const compact = useWindowDimensions().width < COMPACT_WIDTH;
+  // The kiosk folds General into its setup page and leaves the rest to the phone;
+  // a phone has no use for a code pointing at itself
+  const hiddenTab = Platform.OS !== 'web' ? null : isKioskDisplay ? 'general' : 'phoneSetup';
+  const visibleTabs = TABS.filter((t) => t.key !== hiddenTab);
+  // The phone's menu leads with the meal planner, the thing planned there weekly
+  const menuTabs = [
+    ...visibleTabs.filter((t) => t.key === 'meals'),
+    ...visibleTabs.filter((t) => t.key !== 'meals'),
+  ];
   const setConfig = useStore((s) => s.setConfig);
   const setKeepAwake = useStore((s) => s.setKeepAwake);
   const setArticles = useStore((s) => s.setArticles);
@@ -101,7 +129,7 @@ const SettingsModal = () => {
   const requestRefresh = useStore((s) => s.requestRefresh);
   const lang = config.language || 'en';
 
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('phoneSetup');
   const [justSaved, setJustSaved] = useState(false);
   const savedTimer = useRef(null);
   const [form, setForm] = useState({});
@@ -171,6 +199,9 @@ const SettingsModal = () => {
         newsExclude: (config.newsapi?.exclude || []).join(', '),
         quotes: (config.quotes || []).join(', '),
         rightModule: config.rightModule || 'auto',
+        layoutSlots: config.layout?.slots || {},
+        layoutTiles: config.layout?.tiles || {},
+        units: config.units || 'auto',
         countdownTitle: config.countdown?.title || '',
         countdownDate: config.countdown?.date || '',
         countdownTime: config.countdown?.time || '',
@@ -178,6 +209,7 @@ const SettingsModal = () => {
         choreMembers: config.chores?.members || [],
         choreItems: config.chores?.items || [],
         choresShowPoints: config.chores?.showPoints !== false,
+        mealDays: config.meals?.days || {},
         sonosIp: config.sonos?.ip || '',
         sonosName: config.sonos?.name || '',
         sonosGroup: config.sonos?.group || '',
@@ -207,7 +239,13 @@ const SettingsModal = () => {
 
   // Only on open: a save from the phone setup tab updates config while open
   useEffect(() => {
-    if (visible) setActiveTab('general');
+    if (!visible) return;
+    const tab = useStore.getState().settingsTab;
+    // On a phone a plain open lands on the section menu (null)
+    const known = visibleTabs.some((t) => t.key === tab);
+    if (compact) setActiveTab(known && tab !== 'phoneSetup' ? tab : null);
+    else setActiveTab(known ? tab : visibleTabs[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // `value` may be an updater so callers can queue several edits in one tick
@@ -308,6 +346,11 @@ const SettingsModal = () => {
         .map((s) => s.trim())
         .filter(Boolean),
       rightModule: form.rightModule || 'auto',
+      layout: {
+        slots: form.layoutSlots || {},
+        tiles: form.layoutTiles || {},
+      },
+      units: form.units || 'auto',
       countdown: {
         title: (form.countdownTitle || '').trim(),
         date: (form.countdownDate || '').trim(),
@@ -318,6 +361,9 @@ const SettingsModal = () => {
         members: (form.choreMembers || []).filter((m) => m.name.trim()),
         items: (form.choreItems || []).filter((c) => c.name.trim()),
         showPoints: form.choresShowPoints !== false,
+      },
+      meals: {
+        days: pruneMeals(form.mealDays),
       },
       sonos: {
         ip: form.sonosIp,
@@ -452,6 +498,8 @@ const SettingsModal = () => {
     switch (activeTab) {
       case 'general':
         return <GeneralTab {...tabProps} owmKey={form.owmKey} />;
+      case 'layout':
+        return <LayoutTab {...tabProps} />;
       case 'weather':
         return <WeatherTab {...tabProps} />;
       case 'energy':
@@ -462,12 +510,14 @@ const SettingsModal = () => {
         return <StocksTab {...tabProps} />;
       case 'chores':
         return <ChoresTab {...tabProps} />;
+      case 'meals':
+        return <MealsTab {...tabProps} />;
       case 'calendar':
         return <CalendarTab {...tabProps} />;
       case 'music':
         return <MusicTab {...tabProps} />;
       case 'smartDevices':
-        return <SmartDevicesTab {...tabProps} />;
+        return <SmartDevicesTab {...tabProps} onApply={(changes) => saveSettings(false, changes)} />;
       case 'share':
         return <ShareTab {...tabProps} />;
       case 'phoneSetup':
@@ -488,12 +538,22 @@ const SettingsModal = () => {
       navigationBarTranslucent={true}
       onRequestClose={() => saveSettings(true)}>
       <Pressable style={styles.overlay} onPress={() => saveSettings(true)}>
-        <Animated.View style={[styles.modal, {transform: [{scale}]}]}>
+        <Animated.View style={[styles.modal, compact && styles.modalCompact, {transform: [{scale}]}]}>
           <Pressable style={styles.modalInner} onPress={() => {}}>
+          <CompactContext.Provider value={compact}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>
-              {translate('settings', lang)}
-            </Text>
+            {compact && activeTab ? (
+              <TouchableOpacity style={styles.backBtn} onPress={() => setActiveTab(null)} hitSlop={12}>
+                <Icon name="chevron-left" size={30} color="#cccccc" />
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  {translate(activeTab, lang)}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.headerTitle}>
+                {translate('settings', lang)}
+              </Text>
+            )}
             <View style={styles.headerActions}>
               <TouchableOpacity
                 onPress={() => {
@@ -516,13 +576,26 @@ const SettingsModal = () => {
             </View>
           </View>
 
+          {compact && !activeTab ? (
+            <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+              {menuTabs.map((tab) => (
+                <TouchableOpacity key={tab.key} style={styles.menuRow} onPress={() => setActiveTab(tab.key)}>
+                  <Icon name={tab.icon} size={24} color="#cccccc" />
+                  <Text style={styles.menuLabel}>{translate(tab.key, lang)}</Text>
+                  <Icon name="chevron-right" size={24} color="#666" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+
           {/* Tab Bar */}
+          {compact ? null : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.tabBar}
             contentContainerStyle={styles.tabBarContent}>
-            {TABS.map((tab) => (
+            {visibleTabs.map((tab) => (
               <TouchableOpacity
                 key={tab.key}
                 style={[
@@ -541,9 +614,10 @@ const SettingsModal = () => {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          )}
 
           {/* Tab Content */}
-          {activeTab === 'music' ? (
+          {compact && !activeTab ? null : activeTab === 'music' ? (
             <View style={styles.body}>
               {renderTab()}
             </View>
@@ -557,6 +631,7 @@ const SettingsModal = () => {
             </ScrollView>
           )}
 
+          </CompactContext.Provider>
           </Pressable>
         </Animated.View>
       </Pressable>
@@ -572,7 +647,9 @@ export const Section = ({title, children, style}) => (
   </View>
 );
 
-export const Row = ({children}) => <View style={styles.row}>{children}</View>;
+export const Row = ({children}) => (
+  <View style={[styles.row, useContext(CompactContext) && styles.rowCompact]}>{children}</View>
+);
 
 export const Field = ({
   label,
@@ -584,8 +661,10 @@ export const Field = ({
   keyboardType,
   returnKeyType,
   onSubmitEditing,
-}) => (
-  <View style={[styles.field, half && styles.halfField]}>
+}) => {
+  const compact = useContext(CompactContext);
+  return (
+  <View style={[styles.field, half && !compact && styles.halfField]}>
     {label ? <Text style={styles.label}>{label}</Text> : null}
     <View style={styles.inputWrap}>
       <TextInput
@@ -611,7 +690,8 @@ export const Field = ({
       ) : null}
     </View>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   overlay: {
@@ -632,8 +712,33 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 24,
   },
+  modalCompact: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
+  },
   modalInner: {
     flex: 1,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: -8,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    minHeight: 56,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  menuLabel: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 17,
   },
   header: {
     flexDirection: 'row',
@@ -711,6 +816,10 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 8,
+  },
+  rowCompact: {
+    flexDirection: 'column',
+    gap: 0,
   },
   field: {
     marginBottom: 10,

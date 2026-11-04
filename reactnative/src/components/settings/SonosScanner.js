@@ -161,7 +161,7 @@ const SonosScanner = ({onSelectDevice, lang}) => {
               onPress={() => handleSelect(d)}>
               <View style={styles.deviceInfo}>
                 <Text style={styles.deviceName}>{d.room || d.name}</Text>
-                <Text style={styles.deviceMeta}>{d.name} - {d.ip}</Text>
+                <Text style={styles.deviceMeta}>{d.model ? `${d.model} · ${d.ip}` : d.ip}</Text>
               </View>
               {selectedIp === d.ip ? (
                 <Icon name="check" size={18} color="#cccccc" />

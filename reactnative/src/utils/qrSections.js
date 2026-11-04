@@ -24,6 +24,8 @@ export const buildSectionData = (key, form, secrets = {}) => {
         form.countdownDate,
         form.countdownImageUrl,
         form.countdownTime,
+        JSON.stringify({slots: form.layoutSlots || {}, tiles: form.layoutTiles || {}}),
+        form.units || 'auto',
       ].join('|');
     case 'weather':
       return [
@@ -97,6 +99,16 @@ export const buildSectionData = (key, form, secrets = {}) => {
   }
 };
 
+// Senders from before the layout tab leave this out; keep the local layout then
+const parseLayout = (text) => {
+  try {
+    const {slots, tiles} = JSON.parse(text);
+    return {layoutSlots: slots || {}, layoutTiles: tiles || {}};
+  } catch {
+    return {};
+  }
+};
+
 export const parseSectionData = (key, data) => {
   const p = data.split('|');
   switch (key) {
@@ -117,6 +129,8 @@ export const parseSectionData = (key, data) => {
         countdownDate: p[12] || '',
         countdownImageUrl: p[13] || '',
         countdownTime: p[14] || '',
+        ...parseLayout(p[15]),
+        ...(p[16] ? {units: p[16]} : {}),
       };
     case 'weather':
       return {

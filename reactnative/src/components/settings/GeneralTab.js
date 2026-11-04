@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,13 @@ import {
   FlatList,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
-import {canPickBackground, pickImage, uploadBackground} from '../../utils/backgroundUpload';
-import {translate} from '../../utils/translations';
+import {
+  canPickBackground,
+  pickImage,
+  uploadBackground,
+} from '../../utils/backgroundUpload';
+import { translate } from '../../utils/translations';
+import { formSlots } from '../../utils/layout';
 import DropdownPicker from './DropdownPicker';
 
 const TIMEZONES = [
@@ -33,7 +38,7 @@ const TIMEZONES = [
   'UTC',
 ];
 
-const HOURS = Array.from({length: 24}, (_, i) => ({
+const HOURS = Array.from({ length: 24 }, (_, i) => ({
   label: String(i).padStart(2, '0') + ':00',
   value: String(i),
 }));
@@ -41,10 +46,21 @@ const HOURS = Array.from({length: 24}, (_, i) => ({
 // Kiosk-only system controls, backed by /system/* on the web server
 const systemAction = (action, confirmMsg) => {
   if (confirmMsg && !window.confirm(confirmMsg)) return;
-  fetch(`/system/${action}`, {method: 'POST'}).catch(() => {});
+  fetch(`/system/${action}`, { method: 'POST' }).catch(() => {});
 };
 
-const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
+// part 'screen' keeps what is done at the wall itself (the kiosk setup page); the rest is set from a phone
+const GeneralTab = ({
+  form,
+  updateField,
+  lang,
+  owmKey,
+  Section,
+  Field,
+  Row,
+  part = 'all',
+}) => {
+  const screenOnly = part === 'screen';
   const [bgUploading, setBgUploading] = useState('');
   const [bgError, setBgError] = useState('');
   const [bgPicked, setBgPicked] = useState('');
@@ -95,12 +111,12 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
         }
       }
       Geolocation.getCurrentPosition(
-        (pos) => {
+        pos => {
           updateField('lat', String(pos.coords.latitude));
           updateField('lng', String(pos.coords.longitude));
         },
-        (err) => Alert.alert('Location Error', err.message),
-        {enableHighAccuracy: true, timeout: 15000},
+        err => Alert.alert('Location Error', err.message),
+        { enableHighAccuracy: true, timeout: 15000 },
       );
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -111,9 +127,11 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=5&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+        searchQuery,
+      )}&format=json&limit=5&addressdetails=1`;
       const resp = await fetch(url, {
-        headers: {'User-Agent': 'HomeboardApp/1.0'},
+        headers: { 'User-Agent': 'HomeboardApp/1.0' },
       });
       const data = await resp.json();
       if (!resp.ok) {
@@ -134,29 +152,21 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
   };
 
   const localTzOptions = [
-    {label: translate('deviceDefault', lang), value: ''},
-    ...TIMEZONES.map(tz => ({label: tz, value: tz})),
+    { label: translate('deviceDefault', lang), value: '' },
+    ...TIMEZONES.map(tz => ({ label: tz, value: tz })),
   ];
 
   const remoteTzOptions = [
-    {label: translate('hidden', lang), value: ''},
-    ...TIMEZONES.map(tz => ({label: tz, value: tz})),
+    { label: translate('hidden', lang), value: '' },
+    ...TIMEZONES.map(tz => ({ label: tz, value: tz })),
   ];
 
   const languageOptions = [
-    {label: 'English', value: 'en'},
-    {label: 'Svenska', value: 'sv'},
+    { label: 'English', value: 'en' },
+    { label: 'Svenska', value: 'sv' },
   ];
 
-  const rightModuleOptions = [
-    {label: translate('moduleAuto', lang), value: 'auto'},
-    {label: translate('stocks', lang), value: 'stocks'},
-    {label: translate('prices', lang), value: 'energy'},
-    {label: translate('todo', lang), value: 'todo'},
-    {label: translate('topStories', lang), value: 'headlines'},
-    {label: translate('chores', lang), value: 'chores'},
-    {label: translate('countdown', lang), value: 'countdown'},
-  ];
+  const showsCountdown = Object.values(formSlots(form)).includes('countdown');
 
   return (
     <View>
@@ -166,168 +176,184 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
             label={translate('language', lang)}
             value={form.language}
             options={languageOptions}
-            onValueChange={(v) => updateField('language', v)}
+            onValueChange={v => updateField('language', v)}
           />
         </View>
-        <View style={styles.col}>
-          <DropdownPicker
-            label={translate('localTimezone', lang)}
-            value={form.localzone}
-            options={localTzOptions}
-            onValueChange={(v) => updateField('localzone', v)}
-          />
-        </View>
-        <View style={styles.col}>
-          <DropdownPicker
-            label={translate('remoteTimezone', lang)}
-            value={form.remotezone}
-            options={remoteTzOptions}
-            onValueChange={(v) => updateField('remotezone', v)}
-          />
-        </View>
+        {screenOnly ? null : (
+          <>
+            <View style={styles.col}>
+              <DropdownPicker
+                label={translate('localTimezone', lang)}
+                value={form.localzone}
+                options={localTzOptions}
+                onValueChange={v => updateField('localzone', v)}
+              />
+            </View>
+            <View style={styles.col}>
+              <DropdownPicker
+                label={translate('remoteTimezone', lang)}
+                value={form.remotezone}
+                options={remoteTzOptions}
+                onValueChange={v => updateField('remotezone', v)}
+              />
+            </View>
+          </>
+        )}
       </Row>
 
-      <Row>
-        <View style={styles.col}>
-          <DropdownPicker
-            label={translate('rightModule', lang)}
-            value={form.rightModule || 'auto'}
-            options={rightModuleOptions}
-            onValueChange={(v) => updateField('rightModule', v)}
-          />
-        </View>
-        <View style={styles.col} />
-        <View style={styles.col} />
-      </Row>
-
-      {form.rightModule === 'countdown' ? (
+      {showsCountdown && !screenOnly ? (
         <Section title={translate('countdown', lang)}>
           <View style={styles.inlineFields}>
             <Field
               half
               label={translate('countdownTitle', lang)}
               value={form.countdownTitle}
-              onChangeText={(v) => updateField('countdownTitle', v)}
+              onChangeText={v => updateField('countdownTitle', v)}
               placeholder="Thailand"
             />
             <Field
               half
               label={translate('countdownDate', lang)}
               value={form.countdownDate}
-              onChangeText={(v) => updateField('countdownDate', v)}
+              onChangeText={v => updateField('countdownDate', v)}
               placeholder="2026-11-16"
             />
             <Field
               half
               label={translate('countdownTime', lang)}
               value={form.countdownTime}
-              onChangeText={(v) => updateField('countdownTime', v)}
+              onChangeText={v => updateField('countdownTime', v)}
               placeholder="14:30"
             />
           </View>
           <Field
             label={translate('countdownImage', lang)}
             value={form.countdownImageUrl}
-            onChangeText={(v) => updateField('countdownImageUrl', v)}
+            onChangeText={v => updateField('countdownImageUrl', v)}
             placeholder="https://"
           />
           {canPickBackground() ? (
             <TouchableOpacity
               style={styles.pickBtn}
               disabled={!!bgUploading}
-              onPress={() => chooseBackground('countdown', 'countdownImageUrl')}>
+              onPress={() => chooseBackground('countdown', 'countdownImageUrl')}
+            >
               <Text style={styles.pickBtnText}>
-                {bgUploading === 'countdown' ? translate('uploading', lang) : translate('choosePhoto', lang)}
+                {bgUploading === 'countdown'
+                  ? translate('uploading', lang)
+                  : translate('choosePhoto', lang)}
               </Text>
             </TouchableOpacity>
           ) : null}
         </Section>
       ) : null}
 
-      <Section title={translate('location', lang)}>
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={translate('searchAddress', lang)}
-            placeholderTextColor="#666"
-            autoCapitalize="none"
-            returnKeyType="search"
-            onSubmitEditing={searchAddress}
-          />
-          <TouchableOpacity style={styles.searchBtn} onPress={searchAddress}>
-            <Text style={styles.searchBtnText}>
-              {searching ? '...' : translate('search', lang)}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.locBtn} onPress={requestLocation}>
-            <Text style={styles.searchBtnText}>📍</Text>
-          </TouchableOpacity>
-        </View>
-
-        {searchResults.length > 0 && (
-          <View style={styles.resultsList}>
-            {searchResults.map((r, i) => (
+      {screenOnly ? null : (
+        <>
+          <Section title={translate('location', lang)}>
+            <View style={styles.searchRow}>
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={translate('searchAddress', lang)}
+                placeholderTextColor="#666"
+                autoCapitalize="none"
+                returnKeyType="search"
+                onSubmitEditing={searchAddress}
+              />
               <TouchableOpacity
-                key={i}
-                style={styles.resultItem}
-                onPress={() => {
-                  updateField('lat', String(r.lat));
-                  updateField('lng', String(r.lon));
-                  setSearchResults([]);
-                  const short = r.address
-                    ? [r.address.city || r.address.town || r.address.village, r.address.country].filter(Boolean).join(', ')
-                    : r.display_name.split(',').slice(0, 2).join(',').trim();
-                  setSearchQuery(short);
-                  updateField('locationName', short);
-                }}>
-                <Text style={styles.resultText} numberOfLines={2}>
-                  {r.display_name}
-                </Text>
-                <Text style={styles.resultCoords}>
-                  {parseFloat(r.lat).toFixed(4)}, {parseFloat(r.lon).toFixed(4)}
+                style={styles.searchBtn}
+                onPress={searchAddress}
+              >
+                <Text style={styles.searchBtnText}>
+                  {searching ? '...' : translate('search', lang)}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        )}
+              <TouchableOpacity style={styles.locBtn} onPress={requestLocation}>
+                <Text style={styles.searchBtnText}>📍</Text>
+              </TouchableOpacity>
+            </View>
 
-        <Row>
-          <Field
-            label={translate('latitude', lang)}
-            value={form.lat}
-            onChangeText={(v) => updateField('lat', v)}
-            half
-            keyboardType="numeric"
-          />
-          <Field
-            label={translate('longitude', lang)}
-            value={form.lng}
-            onChangeText={(v) => updateField('lng', v)}
-            half
-            keyboardType="numeric"
-          />
-        </Row>
-      </Section>
+            {searchResults.length > 0 && (
+              <View style={styles.resultsList}>
+                {searchResults.map((r, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.resultItem}
+                    onPress={() => {
+                      updateField('lat', String(r.lat));
+                      updateField('lng', String(r.lon));
+                      setSearchResults([]);
+                      const short = r.address
+                        ? [
+                            r.address.city ||
+                              r.address.town ||
+                              r.address.village,
+                            r.address.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')
+                        : r.display_name
+                            .split(',')
+                            .slice(0, 2)
+                            .join(',')
+                            .trim();
+                      setSearchQuery(short);
+                      updateField('locationName', short);
+                    }}
+                  >
+                    <Text style={styles.resultText} numberOfLines={2}>
+                      {r.display_name}
+                    </Text>
+                    <Text style={styles.resultCoords}>
+                      {parseFloat(r.lat).toFixed(4)},{' '}
+                      {parseFloat(r.lon).toFixed(4)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <Row>
+              <Field
+                label={translate('latitude', lang)}
+                value={form.lat}
+                onChangeText={v => updateField('lat', v)}
+                half
+                keyboardType="numeric"
+              />
+              <Field
+                label={translate('longitude', lang)}
+                value={form.lng}
+                onChangeText={v => updateField('lng', v)}
+                half
+                keyboardType="numeric"
+              />
+            </Row>
+          </Section>
+        </>
+      )}
 
       {Platform.OS === 'web' ? (
         <View style={styles.sleepRow}>
           <Switch
             value={form.showOnScreenKeyboard === true}
-            onValueChange={(v) => updateField('showOnScreenKeyboard', v)}
-            trackColor={{false: '#333', true: '#1B4781'}}
+            onValueChange={v => updateField('showOnScreenKeyboard', v)}
+            trackColor={{ false: '#333', true: '#1B4781' }}
             thumbColor="#ffffff"
           />
-          <Text style={styles.sleepLabel}>{translate('onScreenKeyboard', lang)}</Text>
+          <Text style={styles.sleepLabel}>
+            {translate('onScreenKeyboard', lang)}
+          </Text>
         </View>
       ) : null}
 
       <View style={styles.sleepRow}>
         <Switch
           value={form.keepAwake}
-          onValueChange={(v) => updateField('keepAwake', v)}
-          trackColor={{false: '#333', true: '#1B4781'}}
+          onValueChange={v => updateField('keepAwake', v)}
+          trackColor={{ false: '#333', true: '#1B4781' }}
           thumbColor="#ffffff"
         />
         <Text style={styles.sleepLabel}>{translate('keepAwake', lang)}</Text>
@@ -336,7 +362,7 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
             label={translate('startHour', lang)}
             value={sleepEnd}
             options={HOURS}
-            onValueChange={(v) => updateSleep('end', v)}
+            onValueChange={v => updateSleep('end', v)}
           />
         </View>
         <View style={styles.sleepDropdown}>
@@ -344,54 +370,71 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
             label={translate('endHour', lang)}
             value={sleepStart}
             options={HOURS}
-            onValueChange={(v) => updateSleep('start', v)}
+            onValueChange={v => updateSleep('start', v)}
           />
         </View>
         {Platform.OS === 'web' ? (
           <TouchableOpacity
             style={[styles.systemBtn, styles.sleepBtnSpacing]}
-            onPress={() => systemAction('sleep')}>
-            <Text style={styles.systemBtnText}>{translate('sleepScreen', lang)}</Text>
+            onPress={() => systemAction('sleep')}
+          >
+            <Text style={styles.systemBtnText}>
+              {translate('sleepScreen', lang)}
+            </Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
-      <Section title={translate('background', lang)}>
-        <Field
-          label={translate('backgroundDay', lang)}
-          value={form.backgroundDayUrl}
-          onChangeText={(v) => updateField('backgroundDayUrl', v)}
-          placeholder={translate('backgroundHint', lang)}
-        />
-        {canPickBackground() ? (
-          <TouchableOpacity
-            style={styles.pickBtn}
-            disabled={!!bgUploading}
-            onPress={() => chooseBackground('day', 'backgroundDayUrl')}>
-            <Text style={styles.pickBtnText}>
-              {bgUploading === 'day' ? translate('uploading', lang) : translate('choosePhoto', lang)}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        <Field
-          label={translate('backgroundEvening', lang)}
-          value={form.backgroundEveningUrl}
-          onChangeText={(v) => updateField('backgroundEveningUrl', v)}
-          placeholder={translate('backgroundHint', lang)}
-        />
-        {canPickBackground() ? (
-          <TouchableOpacity
-            style={styles.pickBtn}
-            disabled={!!bgUploading}
-            onPress={() => chooseBackground('evening', 'backgroundEveningUrl')}>
-            <Text style={styles.pickBtnText}>
-              {bgUploading === 'evening' ? translate('uploading', lang) : translate('choosePhoto', lang)}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {bgPicked ? <Text style={styles.bgOk}>{translate('photoReady', lang)}</Text> : null}
-        {bgError ? <Text style={styles.bgError}>{bgError}</Text> : null}
-      </Section>
+      {screenOnly ? null : (
+        <>
+          <Section title={translate('background', lang)}>
+            <Field
+              label={translate('backgroundDay', lang)}
+              value={form.backgroundDayUrl}
+              onChangeText={v => updateField('backgroundDayUrl', v)}
+              placeholder={translate('backgroundHint', lang)}
+            />
+            {canPickBackground() ? (
+              <TouchableOpacity
+                style={styles.pickBtn}
+                disabled={!!bgUploading}
+                onPress={() => chooseBackground('day', 'backgroundDayUrl')}
+              >
+                <Text style={styles.pickBtnText}>
+                  {bgUploading === 'day'
+                    ? translate('uploading', lang)
+                    : translate('choosePhoto', lang)}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <Field
+              label={translate('backgroundEvening', lang)}
+              value={form.backgroundEveningUrl}
+              onChangeText={v => updateField('backgroundEveningUrl', v)}
+              placeholder={translate('backgroundHint', lang)}
+            />
+            {canPickBackground() ? (
+              <TouchableOpacity
+                style={styles.pickBtn}
+                disabled={!!bgUploading}
+                onPress={() =>
+                  chooseBackground('evening', 'backgroundEveningUrl')
+                }
+              >
+                <Text style={styles.pickBtnText}>
+                  {bgUploading === 'evening'
+                    ? translate('uploading', lang)
+                    : translate('choosePhoto', lang)}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {bgPicked ? (
+              <Text style={styles.bgOk}>{translate('photoReady', lang)}</Text>
+            ) : null}
+            {bgError ? <Text style={styles.bgError}>{bgError}</Text> : null}
+          </Section>
+        </>
+      )}
 
       {Platform.OS === 'web' ? (
         <Section title={translate('system', lang)}>
@@ -400,7 +443,8 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
               style={styles.systemBtn}
               onPress={() =>
                 systemAction('restart', translate('confirmRestartServer', lang))
-              }>
+              }
+            >
               <Text style={styles.systemBtnText}>
                 {translate('restartServer', lang)}
               </Text>
@@ -409,7 +453,8 @@ const GeneralTab = ({form, updateField, lang, owmKey, Section, Field, Row}) => {
               style={[styles.systemBtn, styles.systemBtnDanger]}
               onPress={() =>
                 systemAction('reboot', translate('confirmReboot', lang))
-              }>
+              }
+            >
               <Text style={styles.systemBtnText}>
                 {translate('rebootDevice', lang)}
               </Text>
@@ -427,6 +472,7 @@ const styles = StyleSheet.create({
   },
   systemRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   inlineFields: {
@@ -532,6 +578,7 @@ const styles = StyleSheet.create({
   sleepRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
     marginVertical: 8,
   },

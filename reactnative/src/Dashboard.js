@@ -26,6 +26,8 @@ import PlaylistWidget from './widgets/PlaylistWidget';
 import TodoWidget from './widgets/TodoWidget';
 import ChoresWidget from './widgets/ChoresWidget';
 import CountdownWidget from './widgets/CountdownWidget';
+import MealsWidget from './widgets/MealsWidget';
+import RecipesWidget from './widgets/RecipesWidget';
 import HeadlinesWidget, {HEADLINE_COUNT} from './widgets/HeadlinesWidget';
 import LaMarzoccoWidget from './widgets/LaMarzoccoWidget';
 import PoolWidget from './widgets/PoolWidget';
@@ -33,6 +35,9 @@ import PoolWidget from './widgets/PoolWidget';
 // Components
 import SettingsModal from './components/SettingsModal';
 import NewsPopup from './components/NewsPopup';
+import RecipeViewer from './components/RecipeViewer';
+import RecipesPopup from './components/RecipesPopup';
+import LaMarzoccoPopup from './components/LaMarzoccoPopup';
 import PlaylistPopup from './components/PlaylistPopup';
 import GroupVolumePopup from './components/GroupVolumePopup';
 import SearchPopup from './components/SearchPopup';
@@ -46,6 +51,7 @@ import {fetchCalendar} from './services/calendarService';
 import {fetchTibberPrices, fetchTibberDevices, createTibberFeed} from './services/tibberService';
 import {fetchLaMarzoccoStatus} from './services/lamarzoccoService';
 import {fetchPoolStatus} from './services/poolService';
+import {resolveSlots} from './utils/layout';
 
 // Background images
 import bgBeach from './assets/images/beach.jpg';
@@ -269,9 +275,26 @@ const Dashboard = () => {
     tibber.currentSubscription.priceInfo &&
     tibber.currentSubscription.priceInfo.today;
 
-  // Middle-right column: pinned by settings, or auto-picked by data
-  const renderRightModule = () => {
-    switch (config.rightModule) {
+  const slots = resolveSlots(config);
+  const showsHeadlines = Object.values(slots).includes('headlines');
+
+  // 'auto' only exists in the middle-right slot and goes by what has data
+  const renderWidget = (widget) => {
+    switch (widget) {
+      case 'weather':
+        return <WeatherWidget />;
+      case 'clock':
+        return <ClockWidget />;
+      case 'forecast':
+        return <ForecastWidget />;
+      case 'news':
+        return <NewsWidget skip={showsHeadlines ? HEADLINE_COUNT : 0} />;
+      case 'calendar':
+        return <CalendarWidget />;
+      case 'sonos':
+        return <SonosWidget />;
+      case 'playlists':
+        return <PlaylistWidget />;
       case 'stocks':
         return hasStocks ? <StocksWidget /> : null;
       case 'energy':
@@ -284,11 +307,15 @@ const Dashboard = () => {
         return <HeadlinesWidget />;
       case 'countdown':
         return <CountdownWidget />;
-      default:
+      case 'meals':
+        return <MealsWidget />;
+      case 'auto':
         if (hasStocks) {
           return <StocksWidget />;
         }
         return hasTibberPrices ? <TibberPriceWidget /> : <TodoWidget />;
+      default:
+        return null;
     }
   };
 
@@ -304,7 +331,12 @@ const Dashboard = () => {
   const hasLaMarzocco = !!lamarzocco && lmWidgetEnabled;
   const poolWidgetEnabled = config.smartDevices?.pool?.showWidget !== false;
   const hasPool = !!pool && poolWidgetEnabled;
-  const hasHomeWidgets = hasEnergyWidgets || hasLaMarzocco || hasPool;
+
+  const showTile = (tile) => config.layout?.tiles?.[tile] !== false;
+  const showConsumption = !!tibberFeed?.power && showTile('consumption');
+  const showBattery = !!tibber2?.battery && showTile('battery');
+  const showEV = tibber2?.electricVehicles?.length > 0 && showTile('ev');
+  const showThermostat = !!tibber2?.thermostat && showTile('thermostat');
 
   // Background: custom URL per time of day, fallback to bundled defaults
   const isEvening = hour >= 19 || hour < 7;
@@ -335,49 +367,34 @@ const Dashboard = () => {
 
         {/* Row 1: Weather | Clock | Forecast */}
         <View style={styles.topRow}>
-          <View style={styles.col35}>
-            <WeatherWidget />
-          </View>
-          <View style={styles.col30}>
-            <ClockWidget />
-          </View>
-          <View style={styles.col35}>
-            <ForecastWidget />
-          </View>
+          <View style={styles.col35}>{renderWidget(slots.topLeft)}</View>
+          <View style={styles.col30}>{renderWidget(slots.topCenter)}</View>
+          <View style={styles.col35}>{renderWidget(slots.topRight)}</View>
         </View>
 
         {/* Row 2: News | Calendar | Stocks/Prices */}
         <View style={styles.middleRow}>
-          <View style={styles.col35}>
-            <NewsWidget skip={config.rightModule === 'headlines' ? HEADLINE_COUNT : 0} />
-          </View>
-          <View style={styles.col30}>
-            <CalendarWidget />
-          </View>
-          <View style={styles.col35}>{renderRightModule()}</View>
+          <View style={styles.col35}>{renderWidget(slots.midLeft)}</View>
+          <View style={styles.col30}>{renderWidget(slots.midCenter)}</View>
+          <View style={styles.col35}>{renderWidget(slots.midRight)}</View>
         </View>
 
         {/* Row 3: Sonos | Playlists | Home (gauges, thermo, EV) */}
         {/* The home panel gets extra width from the playlists, which only
             need about 70% of a regular column */}
         <View style={styles.bottomRow}>
-          <View style={styles.col35}>
-            <SonosWidget />
-          </View>
-          <View style={styles.colPlaylists}>
-            <PlaylistWidget />
-          </View>
+          <View style={styles.col35}>{renderWidget(slots.bottomLeft)}</View>
+          <View style={styles.colPlaylists}>{renderWidget(slots.bottomCenter)}</View>
           <View style={styles.colHome}>
             <View style={styles.homePanel}>
-              {hasHomeWidgets ? (
               <View style={styles.homeCol}>
-                {hasEnergyWidgets && <TibberGaugesWidget />}
-                {tibberFeed && tibberFeed.power ? (
+                {hasEnergyWidgets && showTile('gauges') && <TibberGaugesWidget />}
+                {showConsumption ? (
                   <View style={styles.homeCard}>
                     <ConsumptionWidget />
                   </View>
                 ) : null}
-                {tibber2 && tibber2.battery && tibber2.electricVehicles && tibber2.electricVehicles.length > 0 ? (
+                {showBattery && showEV ? (
                   // Battery + EV share one tile as stacked half-size widgets
                   <View style={styles.homeCard}>
                     <View style={styles.stackHalf}>
@@ -389,19 +406,19 @@ const Dashboard = () => {
                   </View>
                 ) : (
                   <>
-                    {tibber2 && tibber2.battery ? (
+                    {showBattery ? (
                       <View style={styles.homeCard}>
                         <HomevoltWidget />
                       </View>
                     ) : null}
-                    {tibber2 && tibber2.electricVehicles && tibber2.electricVehicles.length > 0 ? (
+                    {showEV ? (
                       <View style={styles.homeCard}>
                         <EVBatteryWidget />
                       </View>
                     ) : null}
                   </>
                 )}
-                {tibber2 && tibber2.thermostat ? (
+                {showThermostat ? (
                   <View style={styles.homeCard}>
                     <ThermostatWidget />
                   </View>
@@ -416,8 +433,12 @@ const Dashboard = () => {
                     <PoolWidget />
                   </View>
                 ) : null}
+                {showTile('recipes') ? (
+                  <View style={styles.homeCard}>
+                    <RecipesWidget />
+                  </View>
+                ) : null}
               </View>
-              ) : null}
             </View>
           </View>
         </View>
@@ -440,6 +461,9 @@ const Dashboard = () => {
         {/* Modals */}
         <SettingsModal />
         <NewsPopup />
+        <RecipesPopup />
+        <RecipeViewer />
+        <LaMarzoccoPopup />
         <PlaylistPopup />
         <GroupVolumePopup />
         <SearchPopup />

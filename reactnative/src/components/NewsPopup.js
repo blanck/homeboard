@@ -11,7 +11,6 @@ import {
   Pressable,
   Linking,
   Animated,
-  Platform,
 } from 'react-native';
 import Svg, {Defs, LinearGradient as SvgLinearGradient, Rect, Stop} from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -19,9 +18,6 @@ import useStore from '../store';
 import {formatArticleContent} from '../utils/formatting';
 import {fs, sp} from '../utils/scale';
 import ArticleReader from './ArticleReader';
-
-// The kiosk browser has no WebView; it keeps the summary card
-const INLINE_READER = Platform.OS !== 'web';
 
 const PANEL_BG = '#16162a';
 
@@ -85,7 +81,7 @@ const NewsPopup = () => {
     return null;
   }
 
-  if (INLINE_READER && article.url) {
+  if (article.url) {
     return (
       <Modal
         visible={visible}

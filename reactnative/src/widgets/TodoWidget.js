@@ -13,25 +13,26 @@ import WidgetCard from '../components/WidgetCard';
 import useStore from '../store';
 import {translate} from '../utils/translations';
 import {fs} from '../utils/scale';
+import {TODOS_KEY as STORAGE_KEY} from '../utils/todos';
 
-const STORAGE_KEY = '@homeboard_todos';
 const EXPIRE_MS = 60 * 60 * 1000; // 1 hour
 
 const TodoWidget = () => {
   const config = useStore((s) => s.config);
+  const todosRev = useStore((s) => s.todosRev);
   const lang = config.language || 'en';
   const [todos, setTodos] = useState([]);
   const [adding, setAdding] = useState(false);
   const [input, setInput] = useState('');
 
-  // Load from storage
+  // Load from storage, again whenever a recipe adds ingredients
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((data) => {
       if (data) {
         setTodos(JSON.parse(data));
       }
     });
-  }, []);
+  }, [todosRev]);
 
   // Clean up expired checked items every minute
   useEffect(() => {

@@ -22,10 +22,14 @@ globalThis.fetch = (input, init) => {
     const url = typeof input === 'string' ? input : input && input.url;
     if (url && /^https?:\/\//i.test(url) && !url.startsWith(window.location.origin)) {
       const proxied = '/proxy?url=' + encodeURIComponent(url);
-      if (typeof input === 'string') {
-        return origFetch(proxied, init);
-      }
-      return origFetch(new Request(proxied, input), init);
+      const request = typeof input === 'string' ? origFetch(proxied, init) : origFetch(new Request(proxied, input), init);
+      // res.url would be the /proxy URL; callers resolve relative links against it
+      return request.then((res) => {
+        try {
+          Object.defineProperty(res, 'url', {value: res.headers.get('x-proxy-final-url') || url});
+        } catch (e) {}
+        return res;
+      });
     }
   } catch (e) {}
   return origFetch(input, init);

@@ -8,6 +8,7 @@ import {
   Pressable,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import useStore from '../store';
@@ -17,6 +18,11 @@ import {fs, sp} from '../utils/scale';
 
 const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
 const SEND_THROTTLE_MS = 150;
+
+const snapshot = (speakers) => ({
+  vols: Object.fromEntries(speakers.map((s) => [s.ip, s.volume])),
+  avg: speakers.reduce((sum, s) => sum + s.volume, 0) / (speakers.length || 1),
+});
 
 // Per-speaker volume control for the current Sonos group, like the group
 // volume view in the Sonos app: a master row, a draggable slider per
@@ -108,9 +114,19 @@ const GroupVolumePopup = () => {
     }, SEND_THROTTLE_MS);
   }, []);
 
-  const adjustAll = useCallback(
-    (delta) => {
-      speakers.forEach((s) => setSpeakerVolume(s.ip, s.volume + delta));
+  // Volumes when the group drag began: offsets from that snapshot, not from the
+  // last move, so clamping one speaker at 0 or 100 does not drift the others
+  const groupBaseRef = useRef(null);
+  const [groupShown, setGroupShown] = useState(null);
+
+  const setGroupVolume = useCallback(
+    (target) => {
+      const base =
+        groupBaseRef.current ||
+        snapshot(speakers);
+      const delta = clamp(target) - base.avg;
+      speakers.forEach((s) => setSpeakerVolume(s.ip, (base.vols[s.ip] ?? s.volume) + delta));
+      if (groupBaseRef.current) setGroupShown(clamp(target));
     },
     [speakers, setSpeakerVolume],
   );
@@ -125,6 +141,7 @@ const GroupVolumePopup = () => {
   const beginDrag = useCallback(
     (key, e, apply) => {
       const pageX = e.nativeEvent.pageX;
+      if (key === 'group') groupBaseRef.current = snapshot(speakers);
       const ref = barRefs.current[key];
       if (ref?.measureInWindow) {
         ref.measureInWindow((x, y, width) => {
@@ -133,8 +150,14 @@ const GroupVolumePopup = () => {
         });
       }
     },
-    [applyFromPageX],
+    [applyFromPageX, speakers],
   );
+
+  const endDrag = useCallback((key) => {
+    if (key !== 'group') return;
+    groupBaseRef.current = null;
+    setGroupShown(null);
+  }, []);
 
   const addSpeaker = useCallback(
     async (ip) => {
@@ -204,8 +227,11 @@ const GroupVolumePopup = () => {
       style={styles.bar}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
       onResponderGrant={(e) => beginDrag(key, e, apply)}
-      onResponderMove={(e) => applyFromPageX(key, e.nativeEvent.pageX, apply)}>
+      onResponderMove={(e) => applyFromPageX(key, e.nativeEvent.pageX, apply)}
+      onResponderRelease={() => endDrag(key)}
+      onResponderTerminate={() => endDrag(key)}>
       <View style={styles.barTrack}>
         <View style={[styles.barFill, {width: `${clamp(value)}%`}]} />
       </View>
@@ -256,9 +282,7 @@ const GroupVolumePopup = () => {
         <Pressable style={StyleSheet.absoluteFill} onPress={hide} />
         <Animated.View style={[styles.panel, panelStyle, panelAnimStyle]}>
           {speakers.length > 1
-            ? renderRow('group', translate('groupVolume', lang), average, (v) =>
-                adjustAll(v - average),
-              )
+            ? renderRow('group', translate('groupVolume', lang), groupShown ?? average, setGroupVolume)
             : null}
           {speakers.map((s) =>
             renderRow(
@@ -338,8 +362,10 @@ const styles = StyleSheet.create({
   // Tall touch target wrapping a thin visual track + thumb
   bar: {
     flex: 1,
-    height: sp(28),
+    height: sp(36),
     justifyContent: 'center',
+    // Without this the browser takes the touch as a pan and cancels the drag
+    ...(Platform.OS === 'web' ? {touchAction: 'none'} : null),
   },
   barTrack: {
     height: 5,

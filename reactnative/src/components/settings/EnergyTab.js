@@ -336,6 +336,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    rowGap: 6,
     marginBottom: 4,
   },
   fetchBtn: {

@@ -3,23 +3,9 @@
 // Settings UI (or LAN sync from the Android app) owns the config.
 
 import AsyncStorage from './shims/async-storage';
+import {legacyToQuickPicks} from '@homeboard/rn/utils/quickPicks';
 
 const SETTINGS_KEY = 'homeboard_settings';
-
-// Legacy playlists used Framework7 icon names; map to Material Community.
-const F7_ICON_MAP = {
-  music_note_2: 'music',
-  antenna_radiowaves_left_right: 'radio',
-};
-
-const mapPlaylists = (playlist = {}) => {
-  const out = {};
-  for (const [key, item] of Object.entries(playlist)) {
-    if (!item || typeof item !== 'object') continue;
-    out[key] = {...item, icon: F7_ICON_MAP[item.icon] || 'music'};
-  }
-  return out;
-};
 
 export const mapLegacyConfig = (legacy, sonosIp) => {
   const s = {};
@@ -63,9 +49,8 @@ export const mapLegacyConfig = (legacy, sonosIp) => {
     };
     s.energyProvider = 'tibber';
   }
-  if (legacy.playlist && Object.keys(legacy.playlist).length) {
-    s.playlist = mapPlaylists(legacy.playlist);
-  }
+  const quickPicks = legacyToQuickPicks(legacy.playlist);
+  if (quickPicks.length) s.quickPicks = quickPicks;
   const bg = legacy.background?.url;
   if (bg) s.background = {dayUrl: bg, eveningUrl: bg};
   return s;

@@ -7,6 +7,7 @@ import PillInput from './PillInput';
 import SourcePicker from './SourcePicker';
 import {CURRENTS_CATEGORIES_CACHE_KEY} from '../../services/newsService';
 import {RSS_PRESETS, DEFAULT_RSS_FEEDS} from '../../config/newsFeeds';
+import {useCompact} from './compact';
 
 const splitList = (v) =>
   (v || '')
@@ -50,6 +51,7 @@ const CATEGORIES_BY_PROVIDER = {
 };
 
 const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
+  const compact = useCompact();
   const selected = (form.newsCategories || '').split(',').filter(Boolean);
   const activeProvider =
     NEWS_PROVIDERS.find((p) => p.value === form.newsProvider) || NEWS_PROVIDERS[0];
@@ -128,7 +130,7 @@ const NewsTab = ({form, updateField, lang, Section, Field, Row}) => {
 
   return (
     <View>
-      <View style={styles.providerRow}>
+      <View style={[styles.providerRow, compact && styles.providerStack]}>
         <View style={styles.providerCol}>
           <Text style={styles.colTitle}>{translate('newsProvider', lang)}</Text>
           <DropdownPicker
@@ -328,6 +330,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 4,
   },
+  providerStack: {flexDirection: 'column', gap: 0},
   providerRow: {
     flexDirection: 'row',
     gap: 12,
