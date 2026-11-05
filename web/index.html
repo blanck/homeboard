@@ -31,17 +31,9 @@
       }
     </style>
     <script>
-      // iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom here
+      // iOS Safari ignores user-scalable=no for pinch; touch-action above already stops
+      // double-tap zoom, and cancelling touchend would swallow the click RNW presses need
       document.addEventListener('gesturestart', (e) => e.preventDefault());
-      let lastTouchEnd = 0;
-      document.addEventListener(
-        'touchend',
-        (e) => {
-          if (e.timeStamp - lastTouchEnd < 300) e.preventDefault();
-          lastTouchEnd = e.timeStamp;
-        },
-        {passive: false},
-      );
     </script>
   </head>
   <body>

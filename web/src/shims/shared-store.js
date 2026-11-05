@@ -23,8 +23,8 @@ export const isShared = (key) => SHARED_KEYS.has(key);
 export const remoteGet = async (key) => {
   const resp = await fetch(`/store?key=${encodeURIComponent(key)}`);
   if (!resp.ok) throw new Error(`store get ${resp.status}`);
-  const {value} = await resp.json();
-  return value;
+  const {value, deleted} = await resp.json();
+  return {value, deleted: !!deleted};
 };
 
 // Revision produced by this client's own writes, so the reload watcher can
@@ -50,6 +50,29 @@ export const remoteSet = async (key, value) => {
   });
   if (!resp.ok) throw new Error(`store set ${resp.status}`);
   await rememberRev(resp);
+};
+
+// Reads a shared key, keeping localStorage as the offline copy
+export const readShared = async (key, localKey) => {
+  const ls = window.localStorage;
+  try {
+    const {value, deleted} = await remoteGet(key);
+    if (value !== null) {
+      ls.setItem(localKey, value);
+      return value;
+    }
+    // Removed on another device: drop our copy instead of pushing it back
+    if (deleted) {
+      ls.removeItem(localKey);
+      return null;
+    }
+    // Never stored yet: adopt this browser's copy rather than wiping a configured device
+    const local = ls.getItem(localKey);
+    if (local) await remoteSet(key, local).catch(() => {});
+    return local;
+  } catch {
+    return ls.getItem(localKey);
+  }
 };
 
 export const remoteRemove = async (key) => {

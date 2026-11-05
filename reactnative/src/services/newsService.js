@@ -3,10 +3,61 @@
 //   { title, description, url, urlToImage, publishedAt, source: { name, icon } }
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {fetchJsonSafe, fetchTextSafe, fetchWithTimeout} from '../utils/fetchSafe';
+import {fetchTextSafe, fetchWithTimeout} from '../utils/fetchSafe';
 import {DEFAULT_RSS_FEEDS} from '../config/newsFeeds';
 
 export const CURRENTS_CATEGORIES_CACHE_KEY = 'homeboard_currents_categories';
+const QUOTA_KEY = 'homeboard_news_quota';
+
+// Free tiers reset daily; TheNewsAPI reports a spent quota as 402
+export const isQuotaStatus = (provider, status) =>
+  status === 429 || (provider === 'thenewsapi' && status === 402);
+
+export const nextUtcMidnight = (now) => {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+};
+
+// provider -> ms until which it is skipped; persisted so a reload keeps it
+let quotaUntil = null;
+const loadQuota = async () => {
+  if (!quotaUntil) {
+    try {
+      quotaUntil = JSON.parse(await AsyncStorage.getItem(QUOTA_KEY)) || {};
+    } catch {
+      quotaUntil = {};
+    }
+  }
+  return quotaUntil;
+};
+
+const markQuotaSpent = async (provider) => {
+  const q = await loadQuota();
+  q[provider] = nextUtcMidnight(Date.now());
+  console.warn(`News: ${provider} quota spent, skipping until`, new Date(q[provider]).toISOString());
+  AsyncStorage.setItem(QUOTA_KEY, JSON.stringify(q)).catch(() => {});
+};
+
+const quotaSpent = async (provider) => (await loadQuota())[provider] > Date.now();
+
+// Like fetchJsonSafe, but sees the status so a 429 starts the cooldown
+const fetchProviderJson = async (provider, url) => {
+  let res;
+  try {
+    res = await fetchWithTimeout(url);
+  } catch {
+    return null;
+  }
+  if (isQuotaStatus(provider, res.status)) {
+    await markQuotaSpent(provider);
+    return null;
+  }
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+};
 
 // Extract a list of valid values from a Currents-style error like
 // "Invalid category value(s): top. Allowed values: a, b, c"
@@ -40,7 +91,7 @@ const fetchSourcesDebug = async (url) => {
     } catch {
       if (body) detail += ` — ${body.slice(0, 200)}`;
     }
-    return {error: detail};
+    return {error: detail, status: res.status};
   }
   try {
     return {data: JSON.parse(body)};
@@ -186,7 +237,7 @@ const fetchFromNewsdata = async (config) => {
   }
 
   const url = `https://newsdata.io/api/1/latest?${params}`;
-  const data = await fetchJsonSafe(url);
+  const data = await fetchProviderJson('newsdata', url);
   if (!data) {
     console.warn('News: NewsData.io request failed (network/timeout)');
     return null;
@@ -235,7 +286,7 @@ const fetchFromTheNewsApi = async (config) => {
   if (sources) params.set('domains', sources);
 
   const url = `https://api.thenewsapi.com/v1/news/all?${params}`;
-  const data = await fetchJsonSafe(url);
+  const data = await fetchProviderJson('thenewsapi', url);
   if (!data) {
     console.warn('News: TheNewsAPI request failed (network/timeout)');
     return null;
@@ -286,6 +337,10 @@ const fetchFromCurrents = async (config) => {
   };
 
   let dbg = await callApi(categories);
+  if (isQuotaStatus('currents', dbg.status)) {
+    await markQuotaSpent('currents');
+    return null;
+  }
 
   // If Currents 400'd with an "Allowed values" list, cache the list and retry
   // with only the valid categories the user had selected.
@@ -367,7 +422,7 @@ const fetchFromNewsApiOrg = async (config) => {
     params.set('language', headlines.language);
   }
 
-  const data = await fetchJsonSafe(`https://newsapi.org/v2/top-headlines?${params}`);
+  const data = await fetchProviderJson('newsapiorg', `https://newsapi.org/v2/top-headlines?${params}`);
   if (!data || data.status !== 'ok' || !Array.isArray(data.articles)) {
     console.warn('News: NewsAPI.org error', data?.status, data?.message);
     return null;
@@ -511,11 +566,42 @@ const dedupe = (articles) => {
   });
 };
 
-// url -> og:image ('' when the page has none), so each article is fetched once
+// url -> og:image ('' when the page has none), so each article is fetched
+// once. Persisted, least recently used first, so a reload does not refetch
+const IMAGE_CACHE_KEY = 'homeboard_news_og_images';
+const IMAGE_CACHE_MAX = 200;
 const imageCache = new Map();
+let imageCacheLoad = null;
+
+const loadImageCache = () => {
+  if (!imageCacheLoad) {
+    imageCacheLoad = AsyncStorage.getItem(IMAGE_CACHE_KEY)
+      .then((str) => {
+        const entries = str ? JSON.parse(str) : [];
+        if (!Array.isArray(entries)) return;
+        // Entries fetched before the load finished are newer, keep them last
+        const fresh = [...imageCache];
+        imageCache.clear();
+        for (const [u, img] of [...entries, ...fresh]) {
+          if (typeof u === 'string') imageCache.set(u, img || '');
+        }
+      })
+      .catch(() => {});
+  }
+  return imageCacheLoad;
+};
+
+const trimImageCache = () => {
+  while (imageCache.size > IMAGE_CACHE_MAX) imageCache.delete(imageCache.keys().next().value);
+};
 
 const fetchOgImage = async (url) => {
-  if (imageCache.has(url)) return imageCache.get(url);
+  if (imageCache.has(url)) {
+    const hit = imageCache.get(url);
+    imageCache.delete(url);
+    imageCache.set(url, hit);
+    return hit;
+  }
   const html = await fetchTextSafe(url, undefined, 8000);
   const match =
     html &&
@@ -524,12 +610,13 @@ const fetchOgImage = async (url) => {
   const image = match ? decodeEntities(match[1]) : '';
   // A failed fetch is retried on the next poll; a page without one is not
   if (html) imageCache.set(url, image);
-  if (imageCache.size > 300) imageCache.delete(imageCache.keys().next().value);
   return image;
 };
 
 const fillMissingImages = async (articles) => {
   const missing = articles.filter((a) => !a.urlToImage && a.url);
+  if (!missing.length) return articles;
+  await loadImageCache();
   for (let i = 0; i < missing.length; i += 4) {
     await Promise.all(
       missing.slice(i, i + 4).map(async (a) => {
@@ -537,6 +624,8 @@ const fillMissingImages = async (articles) => {
       }),
     );
   }
+  trimImageCache();
+  AsyncStorage.setItem(IMAGE_CACHE_KEY, JSON.stringify([...imageCache])).catch(() => {});
   return articles;
 };
 
@@ -602,10 +691,13 @@ export const loadCachedNews = async () => {
 // Resolves to a non-empty list or null; null means "keep what is on screen"
 export const fetchNews = async (config) => {
   const provider = config.newsapi?.provider || 'rss';
-  let articles = applyExclusion(
-    await fetchFromProvider(provider, config).catch(() => null),
-    config.newsapi?.exclude,
-  );
+  const skip = provider !== 'rss' && (await quotaSpent(provider));
+  let articles = skip
+    ? null
+    : applyExclusion(
+        await fetchFromProvider(provider, config).catch(() => null),
+        config.newsapi?.exclude,
+      );
   if (provider !== 'rss' && !articles?.length) {
     // Free API tiers run out of quota or lapse; the feeds keep the widget alive
     console.warn(`News: ${provider} returned nothing, falling back to RSS`);

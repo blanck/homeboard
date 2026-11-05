@@ -122,7 +122,10 @@ const soapRequest = async (ip, path, service, action, body = '', timeoutMs = SON
     timeoutMs,
   );
 
-  return await response.text();
+  const text = await response.text();
+  // Sonos faults come back as XML with HTTP 500; anything else non-2xx (e.g. a proxy 502) is a failure
+  if (!response.ok && !isSoapFault(text)) throw new Error(`Sonos HTTP ${response.status}`);
+  return text;
 };
 
 const extractTag = (xml, tag) => {
@@ -139,6 +142,29 @@ const decodeXmlEntities = (text) => {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'");
 };
+
+export const escapeXml = (text) =>
+  String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+export const POLL_ACTIVE_MS = 5000;
+export const POLL_IDLE_MS = 30000;
+export const POLL_BACKOFF_MAX_MS = 120000;
+export const REDISCOVER_AFTER_FAILURES = 3;
+export const REDISCOVER_MIN_GAP_MS = 5 * 60000;
+
+// Next poll delay: fast while playing, slow when idle, doubling per consecutive failure
+export const nextPollDelay = (state, failures = 0) => {
+  const base = state === 'playing' || state === 'transitioning' ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+  return Math.min(POLL_BACKOFF_MAX_MS, base * 2 ** Math.max(0, failures));
+};
+
+export const shouldRediscover = (failures, lastRediscoverAt, now) =>
+  failures >= REDISCOVER_AFTER_FAILURES && now - lastRediscoverAt >= REDISCOVER_MIN_GAP_MS;
 
 // Get current transport state
 export const getTransportState = async (ip) => {
@@ -180,7 +206,7 @@ export const getPlayMode = async (ip) => {
     );
     return extractTag(result, 'PlayMode') || 'NORMAL';
   } catch {
-    return 'NORMAL';
+    return null;
   }
 };
 
@@ -322,9 +348,10 @@ export const selectQueue = async (ip) => {
   return true;
 };
 
-// Toggle play/pause
-export const togglePlayback = async (ip) => {
-  const state = await getTransportState(ip);
+// Toggle play/pause; a known state skips the GetTransportInfo round trip
+export const togglePlayback = async (ip, knownState) => {
+  const known = ['playing', 'paused', 'stopped'].includes(knownState);
+  const state = known ? knownState : await getTransportState(ip);
   if (state === 'playing') {
     return await soapRequest(
       ip,
@@ -376,13 +403,6 @@ export const setVolume = async (ip, volume) => {
   );
 };
 
-// Adjust volume
-export const adjustVolume = async (ip, delta) => {
-  const current = await getVolume(ip);
-  if (current == null) return;
-  return await setVolume(ip, current + delta);
-};
-
 // Group volume moves every speaker by the same step, so the balance between
 // rooms stays as set (what the Sonos app's group slider does)
 const clampVolume = (v) => Math.min(100, Math.max(0, Math.round(v)));
@@ -390,18 +410,44 @@ export const offsetVolumes = (volumes, delta) => volumes.map((v) => clampVolume(
 export const averageVolume = (volumes) =>
   volumes.length ? volumes.reduce((sum, v) => sum + v, 0) / volumes.length : 0;
 
-const GROUP_CACHE_MS = 15000;
+// GetZoneGroupState is the largest Sonos reply; join/leave here invalidate it
+const GROUP_CACHE_MS = 60000;
 const _groupCache = new Map();
-// Ips playing together with ip (just ip on its own); topology is cached briefly
-export const getGroupMemberIps = async (ip) => {
-  const hit = _groupCache.get(ip);
-  if (hit && Date.now() - hit.at < GROUP_CACHE_MS) return hit.ips;
-  const groups = await getZoneGroups(ip).catch(() => []);
-  const mine = (groups || []).find((g) => g.members.some((m) => m.ip === ip));
-  const ips = mine ? mine.members.map((m) => m.ip).filter(Boolean) : [ip];
-  _groupCache.set(ip, {ips, at: Date.now()});
-  return ips;
+const _groupPending = new Map();
+
+const fetchGroupInfo = async (ip) => {
+  const groups = (await getZoneGroups(ip).catch(() => [])) || [];
+  const mine = groups.find((g) => g.members.some((m) => m.ip === ip));
+  const info = {
+    ips: mine ? mine.members.map((m) => m.ip).filter(Boolean) : [ip],
+    coordinatorIp: mine?.coordinatorIp || ip,
+    at: Date.now(),
+  };
+  // An empty answer is a failed fetch; caching it would pin a wrong group
+  if (groups.length) _groupCache.set(ip, info);
+  return info;
 };
+
+// {ips, coordinatorIp} of the group containing ip, cached
+const getGroupInfo = (ip) => {
+  const hit = _groupCache.get(ip);
+  if (hit && Date.now() - hit.at < GROUP_CACHE_MS) return Promise.resolve(hit);
+  if (!_groupPending.has(ip)) {
+    _groupPending.set(ip, fetchGroupInfo(ip).finally(() => _groupPending.delete(ip)));
+  }
+  return _groupPending.get(ip);
+};
+
+// Drops cached topology at least minAgeMs old (all of it by default)
+export const invalidateGroupCache = (minAgeMs = 0) => {
+  const now = Date.now();
+  for (const [ip, info] of _groupCache) {
+    if (now - info.at >= minAgeMs) _groupCache.delete(ip);
+  }
+};
+
+// Ips playing together with ip (just ip on its own)
+export const getGroupMemberIps = async (ip) => (await getGroupInfo(ip)).ips;
 
 // {ips, volumes} of the group; speakers that do not answer are left out
 export const getGroupVolumes = async (ip) => {
@@ -413,12 +459,6 @@ export const getGroupVolumes = async (ip) => {
 
 export const setGroupVolumes = (ips, volumes) =>
   Promise.all(ips.map((m, i) => setVolume(m, volumes[i]).catch(() => null)));
-
-export const adjustGroupVolume = async (ip, delta) => {
-  const {ips, volumes} = await getGroupVolumes(ip);
-  if (!ips.length) return;
-  await setGroupVolumes(ips, offsetVolumes(volumes, delta));
-};
 
 // Find a Sonos-provided Spotify template URI + resMD by looking through the user's
 // existing Spotify favorites/playlists. We then substitute just the playlist ID into
@@ -484,34 +524,39 @@ export const playSpotifyURI = async (ip, spotifyUri) => {
 // Play TuneIn radio
 export const playRadio = async (ip, stationId, stationName) => {
   const uri = `x-sonosapi-stream:${stationId}?sid=254&flags=8224&sn=0`;
-  const metadata = `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="F00092020${stationId}" restricted="true"><dc:title>${stationName}</dc:title><upnp:class>object.item.audioItem.audioBroadcast</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON65031_</desc></item></DIDL-Lite>`;
+  const metadata = `<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"><item id="F00092020${escapeXml(stationId)}" restricted="true"><dc:title>${escapeXml(stationName)}</dc:title><upnp:class>object.item.audioItem.audioBroadcast</upnp:class><desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON65031_</desc></item></DIDL-Lite>`;
 
-  const set = await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'SetAVTransportURI',
-    `<InstanceID>0</InstanceID><CurrentURI>${uri}</CurrentURI><CurrentURIMetaData>${metadata.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</CurrentURIMetaData>`,
-  );
-  if (isSoapFault(set)) {
-    const code = soapFaultCode(set);
-    console.warn(`Sonos refused station ${stationId}: ${describeFault(code)}`);
-    return playFailed('refused');
-  }
+  try {
+    const set = await soapRequest(
+      ip,
+      '/MediaRenderer/AVTransport/Control',
+      'urn:schemas-upnp-org:service:AVTransport:1',
+      'SetAVTransportURI',
+      `<InstanceID>0</InstanceID><CurrentURI>${escapeXml(uri)}</CurrentURI><CurrentURIMetaData>${escapeXml(metadata)}</CurrentURIMetaData>`,
+    );
+    if (isSoapFault(set)) {
+      const code = soapFaultCode(set);
+      console.warn(`Sonos refused station ${stationId}: ${describeFault(code)}`);
+      return playFailed('refused');
+    }
 
-  const played = await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'Play',
-    '<InstanceID>0</InstanceID><Speed>1</Speed>',
-  );
-  if (isSoapFault(played)) {
-    const code = soapFaultCode(played);
-    console.warn(`Sonos would not start station ${stationId}: ${describeFault(code)}`);
-    return playFailed('refused');
+    const played = await soapRequest(
+      ip,
+      '/MediaRenderer/AVTransport/Control',
+      'urn:schemas-upnp-org:service:AVTransport:1',
+      'Play',
+      '<InstanceID>0</InstanceID><Speed>1</Speed>',
+    );
+    if (isSoapFault(played)) {
+      const code = soapFaultCode(played);
+      console.warn(`Sonos would not start station ${stationId}: ${describeFault(code)}`);
+      return playFailed('refused');
+    }
+    return PLAY_OK;
+  } catch (err) {
+    console.warn('Sonos play radio error:', err);
+    return playFailed('error');
   }
-  return PLAY_OK;
 };
 
 // Extract a named attribute from an XML tag string
@@ -602,45 +647,40 @@ export const getZoneGroups = async (ip) => {
   }
 };
 
-// Find the coordinator IP for the group containing the given device IP
-export const getCoordinatorIp = async (ip) => {
-  try {
-    const groups = await getZoneGroups(ip);
-    for (const group of groups) {
-      const isMember = group.members.some((m) => m.ip === ip);
-      if (isMember) {
-        return group.coordinatorIp;
-      }
-    }
-  } catch (err) {
-    console.warn('Sonos coordinator lookup error:', err);
-  }
-  return ip; // fallback to the device itself
-};
+// Coordinator IP for the group containing ip; the device itself when ungrouped or unknown
+export const getCoordinatorIp = async (ip) => (await getGroupInfo(ip)).coordinatorIp;
 
 // Add a speaker to the group led by coordinatorIp
 export const joinGroup = async (memberIp, coordinatorIp) => {
   const uuid = await getDeviceUUID(coordinatorIp);
   if (!uuid) return false;
-  await soapRequest(
-    memberIp,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'SetAVTransportURI',
-    `<InstanceID>0</InstanceID><CurrentURI>x-rincon:${uuid}</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
-  );
+  try {
+    await soapRequest(
+      memberIp,
+      '/MediaRenderer/AVTransport/Control',
+      'urn:schemas-upnp-org:service:AVTransport:1',
+      'SetAVTransportURI',
+      `<InstanceID>0</InstanceID><CurrentURI>x-rincon:${uuid}</CurrentURI><CurrentURIMetaData></CurrentURIMetaData>`,
+    );
+  } finally {
+    invalidateGroupCache();
+  }
   return true;
 };
 
 // Remove a speaker from its group (it becomes standalone)
 export const leaveGroup = async (ip) => {
-  await soapRequest(
-    ip,
-    '/MediaRenderer/AVTransport/Control',
-    'urn:schemas-upnp-org:service:AVTransport:1',
-    'BecomeCoordinatorOfStandaloneGroup',
-    '<InstanceID>0</InstanceID>',
-  );
+  try {
+    await soapRequest(
+      ip,
+      '/MediaRenderer/AVTransport/Control',
+      'urn:schemas-upnp-org:service:AVTransport:1',
+      'BecomeCoordinatorOfStandaloneGroup',
+      '<InstanceID>0</InstanceID>',
+    );
+  } finally {
+    invalidateGroupCache();
+  }
 };
 
 // Visible members of the group containing the given device; falls back to

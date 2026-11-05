@@ -6,7 +6,7 @@ import {fs} from '../utils/scale';
 import {formatWind} from '../utils/formatting';
 import WindArrow from '../components/WindArrow';
 
-// Map Met.no symbol_code to MaterialIcons name
+// Map Met.no symbol_code to an icon name
 const metnoIcon = (code) => {
   if (!code) return 'thermostat';
   const c = code.replace(/_day|_night|_polartwilight/g, '');
@@ -48,7 +48,7 @@ const metnoIcon = (code) => {
   return map[c] || 'thermometer';
 };
 
-// Map Netatmo numeric weather symbol to MaterialIcons name
+// Map Netatmo numeric weather symbol to an icon name
 const netatmoIcon = (symbol) => {
   if (!symbol) return 'wb-sunny';
   const s = String(symbol);

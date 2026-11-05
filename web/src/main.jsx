@@ -8,7 +8,6 @@ import {importLegacyConfigIfFresh} from './legacy-import';
 import {getRev, localWriteRev} from './shims/shared-store';
 import OnScreenKeyboard from './OnScreenKeyboard';
 import mciFont from 'react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf';
-import miFont from 'react-native-vector-icons/Fonts/MaterialIcons.ttf';
 
 // A phone gets the settings UI, the wall display gets the dashboard. The
 // smaller viewport edge separates them (any phone is under 800 either way
@@ -53,7 +52,6 @@ const watchForRemoteEdits = async () => {
 
 Promise.allSettled([
   loadFont('MaterialCommunityIcons', mciFont),
-  loadFont('MaterialIcons', miFont),
   settingsOnly ? Promise.resolve() : importLegacyConfigIfFresh(),
 ]).then(() => {
   // The kiosk has no soft keyboard of its own; a phone already does

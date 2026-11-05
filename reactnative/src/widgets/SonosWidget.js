@@ -1,18 +1,26 @@
 import React, {useEffect, useRef, useCallback, useState} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, Image, Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import * as sonosService from '../services/sonosService';
 import {fs, sp} from '../utils/scale';
 import {translate} from '../utils/translations';
 
 const SONOS_UUID_KEY = 'sonos_known_uuid';
-const QUEUE_RESET_INTERVAL_MS = 60000;
+// Re-checks an idle transport for a missing source; first check runs on entering idle
+const QUEUE_RESET_INTERVAL_MS = 10 * 60000;
+// A button press within this long of the last one reuses its group volume snapshot
+const STEP_SESSION_MS = 3000;
+// Sonos reports TRANSITIONING briefly after Play; keep the optimistic icon meanwhile
+const COMMAND_SETTLE_MS = 3000;
+// Min topology age before a grouping mismatch forces a refetch (stereo satellites never agree)
+const TOPOLOGY_RECHECK_MS = 15000;
 
 const SonosWidget = () => {
   const sonos = useStore((s) => s.sonos);
   const config = useStore((s) => s.config);
+  const asleep = useStore((s) => s.asleep);
   const setSonosTrack = useStore((s) => s.setSonosTrack);
   const setSonosState = useStore((s) => s.setSonosState);
   const setSonosVolume = useStore((s) => s.setSonosVolume);
@@ -26,10 +34,13 @@ const SonosWidget = () => {
   const lastQueueResetRef = useRef(0);
   const volumeBarRef = useRef(null);
   const volumeTouchRef = useRef(0);
-  const inFlightRef = useRef(false);
   const failuresRef = useRef(0);
   const rediscoveringRef = useRef(false);
+  const lastRediscoverRef = useRef(0);
   const persistedUuidRef = useRef(null);
+  const pollNowRef = useRef(null);
+  // seq changes whenever a command starts or ends; polls spanning a change are stale
+  const commandRef = useRef({seq: 0, pending: 0, settleUntil: 0});
   // When the configured speaker is grouped, playback lives on the group
   // coordinator; volume stays on the configured device
   const coordinatorIpRef = useRef(null);
@@ -41,6 +52,7 @@ const SonosWidget = () => {
   const rediscover = useCallback(async () => {
     if (rediscoveringRef.current) return;
     rediscoveringRef.current = true;
+    lastRediscoverRef.current = Date.now();
     try {
       const devices = await sonosService.discoverSonosDevices(4000);
       if (!devices || devices.length === 0) return;
@@ -74,94 +86,143 @@ const SonosWidget = () => {
       rediscoveringRef.current = false;
     }
   }, [sonosIp, sonosName, sonosGroup, config.sonos, updateConfig]);
+  const rediscoverRef = useRef(rediscover);
+  rediscoverRef.current = rediscover;
 
   useEffect(() => {
-    if (!sonosIp) {
+    failuresRef.current = 0;
+  }, [sonosIp]);
+
+  useEffect(() => {
+    if (!sonosIp || asleep) {
       return;
     }
     coordinatorIpRef.current = null;
+    let stopped = false;
+    let timer = null;
+    let inFlight = false;
+    let rerun = false;
 
     const poll = async () => {
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
-      try {
-        // Always poll the configured device first: it tells us whether it is
-        // (still) a group member. Following a cached coordinator blindly left
-        // the widget stuck on another room after the group dissolved
-        let [track, state, volume, playMode] = await Promise.all([
-          sonosService.getCurrentTrack(sonosIp),
-          sonosService.getTransportState(sonosIp),
-          sonosService
-            .getGroupVolumes(sonosIp)
-            .then((g) => (g.volumes.length ? Math.round(sonosService.averageVolume(g.volumes)) : null)),
-          sonosService.getPlayMode(sonosIp),
-        ]);
-        if (track?.grouped) {
-          const cIp =
-            coordinatorIpRef.current || (await sonosService.getCoordinatorIp(sonosIp));
-          if (cIp && cIp !== sonosIp) {
-            coordinatorIpRef.current = cIp;
-            [track, state, playMode] = await Promise.all([
-              sonosService.getCurrentTrack(cIp),
-              sonosService.getTransportState(cIp),
-              sonosService.getPlayMode(cIp),
-            ]);
-            // Cached coordinator no longer leads this group; re-resolve next poll
-            if (track?.grouped) coordinatorIpRef.current = null;
+      const seq = commandRef.current.seq;
+      // Always poll the configured device first: it tells us whether it is
+      // (still) a group member. Following a cached coordinator blindly left
+      // the widget stuck on another room after the group dissolved
+      let [track, state, volume, playMode] = await Promise.all([
+        sonosService.getCurrentTrack(sonosIp),
+        sonosService.getTransportState(sonosIp),
+        sonosService
+          .getGroupVolumes(sonosIp)
+          .then((g) => (g.volumes.length ? Math.round(sonosService.averageVolume(g.volumes)) : null)),
+        sonosService.getPlayMode(sonosIp),
+      ]);
+      if (track?.grouped) {
+        const cIp =
+          coordinatorIpRef.current || (await sonosService.getCoordinatorIp(sonosIp));
+        if (cIp && cIp !== sonosIp) {
+          coordinatorIpRef.current = cIp;
+          [track, state, playMode] = await Promise.all([
+            sonosService.getCurrentTrack(cIp),
+            sonosService.getTransportState(cIp),
+            sonosService.getPlayMode(cIp),
+          ]);
+          // Cached coordinator no longer leads this group; re-resolve next poll
+          if (track?.grouped) {
+            coordinatorIpRef.current = null;
+            sonosService.invalidateGroupCache(TOPOLOGY_RECHECK_MS);
           }
-        } else if (track) {
-          coordinatorIpRef.current = null;
+        } else {
+          // Device says grouped but the cached topology does not; refetch soon
+          sonosService.invalidateGroupCache(TOPOLOGY_RECHECK_MS);
         }
-        const allFailed = !track && !state && volume == null && !playMode;
-        if (allFailed) {
-          failuresRef.current += 1;
-          coordinatorIpRef.current = null;
-          if (failuresRef.current >= 3) {
-            rediscover().catch((e) => console.warn('[poll rediscover]', e?.message || String(e)));
-          }
-          return;
+      } else if (track) {
+        coordinatorIpRef.current = null;
+      }
+      if (stopped) return;
+      const allFailed = !track && !state && volume == null && !playMode;
+      if (allFailed) {
+        failuresRef.current += 1;
+        coordinatorIpRef.current = null;
+        if (sonosService.shouldRediscover(failuresRef.current, lastRediscoverRef.current, Date.now())) {
+          rediscoverRef.current().catch((e) => console.warn('[poll rediscover]', e?.message || String(e)));
         }
-        const wasFailing = failuresRef.current > 0;
-        failuresRef.current = 0;
-        if (track && !track.grouped) setSonosTrack(track);
-        if (state) setSonosState(state);
-        // A poll that started mid-drag would snap the bar back
-        if (volume != null && Date.now() - volumeTouchRef.current > 2500) setSonosVolume(volume);
-        if (playMode) setSonosShuffle(playMode.includes('SHUFFLE'));
-        // A Spotify Connect session that moved away can leave the transport on no
-        // source at all; point it back at its own queue so play and enqueue work
-        const controlIp = coordinatorIpRef.current || sonosIp;
-        if (
-          sonosService.isIdleTrack(track) &&
-          state === 'stopped' &&
-          Date.now() - lastQueueResetRef.current > QUEUE_RESET_INTERVAL_MS
-        ) {
-          lastQueueResetRef.current = Date.now();
-          sonosService
-            .getMediaInfo(controlIp)
-            .then((info) => (info && !info.uri ? sonosService.selectQueue(controlIp) : null))
-            .catch((e) => console.warn('[poll selectQueue]', e?.message || String(e)));
-        }
-        // Persist UUID for future rediscovery — runs once on first success or after recovery
-        if (!persistedUuidRef.current || wasFailing) {
-          sonosService.getDeviceUUID(sonosIp)
-            .then((uuid) => {
-              if (uuid) {
-                persistedUuidRef.current = uuid;
-                AsyncStorage.setItem(SONOS_UUID_KEY, uuid).catch(() => {});
-              }
-            })
-            .catch((e) => console.warn('[poll getDeviceUUID]', e?.message || String(e)));
-        }
-      } finally {
-        inFlightRef.current = false;
+        return;
+      }
+      const wasFailing = failuresRef.current > 0;
+      failuresRef.current = 0;
+      const cmd = commandRef.current;
+      const fresh = cmd.pending === 0 && cmd.seq === seq;
+      if (track && !track.grouped) setSonosTrack(track);
+      if (state && fresh && !(state === 'transitioning' && Date.now() < cmd.settleUntil)) {
+        setSonosState(state);
+      }
+      // A poll that started mid-drag would snap the bar back
+      if (volume != null && Date.now() - volumeTouchRef.current > 2500) setSonosVolume(volume);
+      if (playMode && fresh) setSonosShuffle(playMode.includes('SHUFFLE'));
+      // A Spotify Connect session that moved away can leave the transport on no
+      // source at all; point it back at its own queue so play and enqueue work
+      const controlIp = coordinatorIpRef.current || sonosIp;
+      const idle = sonosService.isIdleTrack(track);
+      if (!idle) lastQueueResetRef.current = 0;
+      if (
+        idle &&
+        state === 'stopped' &&
+        Date.now() - lastQueueResetRef.current > QUEUE_RESET_INTERVAL_MS
+      ) {
+        lastQueueResetRef.current = Date.now();
+        sonosService
+          .getMediaInfo(controlIp)
+          .then((info) => (info && !info.uri ? sonosService.selectQueue(controlIp) : null))
+          .catch((e) => console.warn('[poll selectQueue]', e?.message || String(e)));
+      }
+      // Persist UUID for future rediscovery: once on first success or after recovery
+      if (!persistedUuidRef.current || wasFailing) {
+        sonosService.getDeviceUUID(sonosIp)
+          .then((uuid) => {
+            if (uuid) {
+              persistedUuidRef.current = uuid;
+              AsyncStorage.setItem(SONOS_UUID_KEY, uuid).catch(() => {});
+            }
+          })
+          .catch((e) => console.warn('[poll getDeviceUUID]', e?.message || String(e)));
       }
     };
 
-    poll();
-    const timer = setInterval(poll, 5000);
-    return () => clearInterval(timer);
-  }, [sonosIp, setSonosTrack, setSonosState, setSonosVolume, setSonosShuffle, rediscover]);
+    const run = async () => {
+      if (stopped) return;
+      if (inFlight) {
+        rerun = true;
+        return;
+      }
+      clearTimeout(timer);
+      inFlight = true;
+      try {
+        await poll();
+      } catch (e) {
+        console.warn('[sonos poll]', e?.message || String(e));
+      } finally {
+        inFlight = false;
+      }
+      if (stopped) return;
+      if (rerun) {
+        rerun = false;
+        run();
+        return;
+      }
+      timer = setTimeout(
+        run,
+        sonosService.nextPollDelay(useStore.getState().sonos.state, failuresRef.current),
+      );
+    };
+
+    pollNowRef.current = run;
+    run();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      if (pollNowRef.current === run) pollNowRef.current = null;
+    };
+  }, [sonosIp, asleep, setSonosTrack, setSonosState, setSonosVolume, setSonosShuffle]);
 
   useEffect(() => {
     setRoomName(null);
@@ -175,61 +236,58 @@ const SonosWidget = () => {
     };
   }, [sonosIp]);
 
-  // Track position counter
+  const isPlaying = sonos.state === 'playing';
   useEffect(() => {
-    const timer = setInterval(() => {
-      incrementSonosPosition();
-    }, 1000);
+    if (!sonosIp || !isPlaying || asleep) return;
+    const timer = setInterval(incrementSonosPosition, 1000);
     return () => clearInterval(timer);
-  }, [incrementSonosPosition]);
+  }, [sonosIp, isPlaying, asleep, incrementSonosPosition]);
+
+  // Polls right after the command so the UI settles without waiting a full interval
+  const runCommand = useCallback(async (fn) => {
+    const cmd = commandRef.current;
+    cmd.seq += 1;
+    cmd.pending += 1;
+    try {
+      await fn();
+    } catch (e) {
+      console.warn('[sonos command]', e?.message || String(e));
+    } finally {
+      cmd.pending -= 1;
+      cmd.seq += 1;
+      cmd.settleUntil = Date.now() + COMMAND_SETTLE_MS;
+      pollNowRef.current?.();
+    }
+  }, []);
 
   const playPause = useCallback(() => {
-    if (sonosIp) {
-      sonosService.togglePlayback(coordinatorIpRef.current || sonosIp);
-    }
-  }, [sonosIp]);
+    if (!sonosIp) return;
+    const known = useStore.getState().sonos.state;
+    setSonosState(known === 'playing' ? 'paused' : 'playing');
+    runCommand(() => sonosService.togglePlayback(coordinatorIpRef.current || sonosIp, known));
+  }, [sonosIp, setSonosState, runCommand]);
 
   const playNext = useCallback(() => {
-    if (sonosIp) {
-      sonosService.nextTrack(coordinatorIpRef.current || sonosIp);
-    }
-  }, [sonosIp]);
+    if (!sonosIp) return;
+    runCommand(() => sonosService.nextTrack(coordinatorIpRef.current || sonosIp));
+  }, [sonosIp, runCommand]);
 
-  const toggleShuffle = useCallback(async () => {
+  const toggleShuffle = useCallback(() => {
     if (!sonosIp) return;
     const previous = sonos.shuffle;
-    const newMode = previous ? 'NORMAL' : 'SHUFFLE';
     setSonosShuffle(!previous);
-    try {
-      await sonosService.setPlayMode(coordinatorIpRef.current || sonosIp, newMode);
-    } catch {
-      setSonosShuffle(previous);
-    }
-  }, [sonosIp, sonos.shuffle, setSonosShuffle]);
+    runCommand(() =>
+      sonosService
+        .setPlayMode(coordinatorIpRef.current || sonosIp, previous ? 'NORMAL' : 'SHUFFLE')
+        .catch((e) => {
+          setSonosShuffle(previous);
+          throw e;
+        }),
+    );
+  }, [sonosIp, sonos.shuffle, setSonosShuffle, runCommand]);
 
-  const stepVolume = useCallback(
-    (delta) => {
-      if (!sonosIp) return;
-      volumeTouchRef.current = Date.now();
-      setSonosVolume(Math.max(0, Math.min(100, useStore.getState().sonos.volume + delta)));
-      sonosService.adjustGroupVolume(sonosIp, delta);
-    },
-    [sonosIp, setSonosVolume],
-  );
-  const volumeDown = useCallback(() => stepVolume(-2), [stepVolume]);
-  const volumeUp = useCallback(() => stepVolume(2), [stepVolume]);
-
-  const startVolumeRepeat = useCallback(
-    (delta) => {
-      volumeTimerRef.current = setInterval(() => stepVolume(delta), 300);
-    },
-    [stepVolume],
-  );
-
-  // Drag on the bar sets the group volume; a tap without moving opens the popup
-  const dragRef = useRef(null);
-  const sendDragVolume = useCallback(() => {
-    const d = dragRef.current;
+  // One send in flight per gesture; offsets apply to the snapshot taken at its start
+  const sendGroupVolume = useCallback((d) => {
     if (!d || !d.base || d.target == null || d.sending) return;
     d.sending = true;
     const {ips, volumes} = d.base;
@@ -238,10 +296,75 @@ const SonosWidget = () => {
       .setGroupVolumes(ips, sonosService.offsetVolumes(volumes, target - sonosService.averageVolume(volumes)))
       .finally(() => {
         d.sending = false;
-        if (d.target !== target) setTimeout(sendDragVolume, 120);
+        if (d.target !== target) setTimeout(() => sendGroupVolume(d), 120);
       });
   }, []);
 
+  const loadGroupBase = useCallback(
+    (d) => {
+      if (!sonosIp) return;
+      sonosService
+        .getGroupVolumes(sonosIp)
+        .then((base) => {
+          d.base = base.ips.length ? base : null;
+        })
+        .catch(() => {})
+        .finally(() => {
+          d.loaded = true;
+          sendGroupVolume(d);
+        });
+    },
+    [sonosIp, sendGroupVolume],
+  );
+
+  const stepRef = useRef(null);
+  const beginVolumeStep = useCallback(() => {
+    const s = stepRef.current;
+    if (s && (!s.loaded || s.base) && Date.now() - s.lastAt < STEP_SESSION_MS) {
+      s.lastAt = Date.now();
+      return;
+    }
+    stepRef.current = {target: null, base: null, loaded: false, sending: false, lastAt: Date.now()};
+    loadGroupBase(stepRef.current);
+  }, [loadGroupBase]);
+
+  const stepVolume = useCallback(
+    (delta) => {
+      if (!sonosIp) return;
+      beginVolumeStep();
+      const s = stepRef.current;
+      const from = s.target ?? useStore.getState().sonos.volume;
+      s.target = Math.max(0, Math.min(100, from + delta));
+      s.lastAt = Date.now();
+      volumeTouchRef.current = Date.now();
+      setSonosVolume(s.target);
+      sendGroupVolume(s);
+    },
+    [sonosIp, setSonosVolume, sendGroupVolume, beginVolumeStep],
+  );
+  const volumeDown = useCallback(() => stepVolume(-2), [stepVolume]);
+  const volumeUp = useCallback(() => stepVolume(2), [stepVolume]);
+
+  const stopVolumeRepeat = useCallback(() => {
+    if (volumeTimerRef.current) {
+      clearInterval(volumeTimerRef.current);
+      volumeTimerRef.current = null;
+    }
+    if (stepRef.current) stepRef.current.lastAt = Date.now();
+  }, []);
+
+  const startVolumeRepeat = useCallback(
+    (delta) => {
+      stopVolumeRepeat();
+      volumeTimerRef.current = setInterval(() => stepVolume(delta), 300);
+    },
+    [stepVolume, stopVolumeRepeat],
+  );
+
+  useEffect(() => stopVolumeRepeat, [stopVolumeRepeat]);
+
+  // Drag on the bar sets the group volume; a tap without moving opens the popup
+  const dragRef = useRef(null);
   const dragTo = useCallback(
     (pageX) => {
       const d = dragRef.current;
@@ -250,9 +373,9 @@ const SonosWidget = () => {
       d.target = target;
       volumeTouchRef.current = Date.now();
       setSonosVolume(target);
-      sendDragVolume();
+      sendGroupVolume(d);
     },
-    [setSonosVolume, sendDragVolume],
+    [setSonosVolume, sendGroupVolume],
   );
 
   const onVolumeGrant = useCallback(
@@ -263,14 +386,9 @@ const SonosWidget = () => {
       volumeBarRef.current?.measureInWindow?.((x, y, width, height) => {
         d.geom = {x, y, width, height};
       });
-      if (sonosIp) {
-        sonosService.getGroupVolumes(sonosIp).then((base) => {
-          d.base = base.ips.length ? base : null;
-          sendDragVolume();
-        });
-      }
+      loadGroupBase(d);
     },
-    [sonosIp, sendDragVolume],
+    [loadGroupBase],
   );
 
   const onVolumeMove = useCallback(
@@ -297,14 +415,7 @@ const SonosWidget = () => {
     }
   }, [showGroupVolume]);
 
-  const stopVolumeRepeat = useCallback(() => {
-    if (volumeTimerRef.current) {
-      clearInterval(volumeTimerRef.current);
-      volumeTimerRef.current = null;
-    }
-  }, []);
-
-  const stateIconName = sonos.state === 'playing' ? 'pause' : 'play-arrow';
+  const stateIconName = isPlaying ? 'pause' : 'play';
   const albumArt = sonos.track?.albumArtURL || sonos.track?.albumArtURI || null;
   const progress =
     sonos.track && sonos.track.duration > 0
@@ -369,10 +480,12 @@ const SonosWidget = () => {
             {/* Volume controls */}
             <View style={styles.controls}>
               <TouchableOpacity
+                hitSlop={VOLUME_DOWN_SLOP}
+                onPressIn={beginVolumeStep}
                 onPress={volumeDown}
                 onLongPress={() => startVolumeRepeat(-1)}
                 onPressOut={stopVolumeRepeat}>
-                <Icon name="volume-down" size={22} color="#ffffff" />
+                <Icon name="volume-medium" size={22} color="#ffffff" />
               </TouchableOpacity>
               <View
                 ref={volumeBarRef}
@@ -393,10 +506,12 @@ const SonosWidget = () => {
                 </View>
               </View>
               <TouchableOpacity
+                hitSlop={VOLUME_UP_SLOP}
+                onPressIn={beginVolumeStep}
                 onPress={volumeUp}
                 onLongPress={() => startVolumeRepeat(1)}
                 onPressOut={stopVolumeRepeat}>
-                <Icon name="volume-up" size={22} color="#ffffff" />
+                <Icon name="volume-high" size={22} color="#ffffff" />
               </TouchableOpacity>
             </View>
           </View>
@@ -404,7 +519,7 @@ const SonosWidget = () => {
           {/* Play controls */}
           <View style={styles.playCol}>
             <TouchableOpacity onPress={toggleShuffle}>
-              <Icon name="shuffle" size={28} color={sonos.shuffle ? '#3e88c4' : '#666666'} />
+              <Icon name="shuffle-variant" size={28} color={sonos.shuffle ? '#3e88c4' : '#666666'} />
             </TouchableOpacity>
             <TouchableOpacity onPress={playPause}>
               <Icon name={stateIconName} size={36} color="#ffffff" />
@@ -429,6 +544,10 @@ const SonosWidget = () => {
     </View>
   );
 };
+
+// About 44 dp around the 22 px icons; the inner side stops at the bar's 8 px margin
+const VOLUME_DOWN_SLOP = {top: 11, bottom: 11, left: 11, right: 8};
+const VOLUME_UP_SLOP = {top: 11, bottom: 11, left: 8, right: 11};
 
 const styles = StyleSheet.create({
   container: {

@@ -117,23 +117,23 @@ export const formatArticleContent = (text) =>
   text ? text.replace(/\n/g, '\n') : '';
 
 // Calendar formatting — port from home.vue
-export const formatCalendarTime = (datetime, lang) => {
+export const formatCalendarTime = (datetime, lang, allDay) => {
   const d = dayjs(datetime);
   const now = dayjs();
   const diffDays = d.startOf('day').diff(now.startOf('day'), 'day');
+  const time = allDay ? '' : ' ' + d.format('HH:mm');
+  const at = allDay ? '' : ' at';
 
   if (diffDays === 0) {
-    const formats = lang === 'sv' ? 'Idag' : 'Today at';
-    return formats + ' ' + d.format('HH:mm');
+    return (lang === 'sv' ? 'Idag' : 'Today' + at) + time;
   }
   if (diffDays === 1) {
-    const formats = lang === 'sv' ? 'Imorgon' : 'Tomorrow at';
-    return formats + ' ' + d.format('HH:mm');
+    return (lang === 'sv' ? 'Imorgon' : 'Tomorrow' + at) + time;
   }
   if (diffDays > 1 && diffDays <= 7) {
-    return d.locale(lang || 'en').format('dddd HH:mm');
+    return d.locale(lang || 'en').format('dddd') + time;
   }
-  return d.locale(lang || 'en').format('MMM D HH:mm');
+  return d.locale(lang || 'en').format('MMM D') + time;
 };
 
 export const formatCalendarClass = (datetime) => {

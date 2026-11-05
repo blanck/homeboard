@@ -1,5 +1,6 @@
 import React, {useEffect, useCallback, useState, useRef} from 'react';
-import {View, StyleSheet, TouchableOpacity, Text, StatusBar, ImageBackground} from 'react-native';
+import {View, StyleSheet, TouchableOpacity, Text, StatusBar, ImageBackground, Platform} from 'react-native';
+import {useShallow} from 'zustand/react/shallow';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from './store';
@@ -57,6 +58,9 @@ import {resolveSlots} from './utils/layout';
 import bgBeach from './assets/images/beach.jpg';
 import bgNight from './assets/images/night.jpg';
 
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+
 const Dashboard = () => {
   const insets = useSafeAreaInsets();
   const config = useStore((s) => s.config);
@@ -70,11 +74,23 @@ const Dashboard = () => {
   const setLaMarzocco = useStore((s) => s.setLaMarzocco);
   const setPool = useStore((s) => s.setPool);
   const setSettingsVisible = useStore((s) => s.setSettingsVisible);
-  const tibber = useStore((s) => s.tibber);
-  const quotes = useStore((s) => s.quotes);
-  const lamarzocco = useStore((s) => s.lamarzocco);
-  const pool = useStore((s) => s.pool);
   const isKioskDisplay = useStore((s) => s.isKioskDisplay);
+  const asleep = useStore((s) => s.asleep);
+  // Presence flags only: live data must not re-render the whole dashboard
+  const has = useStore(
+    useShallow((s) => ({
+      quotes: !!s.quotes && s.quotes.length > 0,
+      tibberToday: !!s.tibber?.currentSubscription?.priceInfo?.today,
+      tibberCurrent: !!s.tibber?.currentSubscription?.priceInfo?.current,
+      inverter: !!s.tibber2?.inverter,
+      thermostat: !!s.tibber2?.thermostat,
+      battery: !!s.tibber2?.battery,
+      ev: s.tibber2?.electricVehicles?.length > 0,
+      power: !!s.tibberFeed?.power,
+      lamarzocco: !!s.lamarzocco,
+      pool: !!s.pool,
+    })),
+  );
 
   const isTibberEnabled = config.energyProvider === 'tibber' || (config.energyProvider === undefined && !!config.tibber1?.apiEndpoint?.apiKey);
   const isOnline = useIsOnline();
@@ -82,14 +98,22 @@ const Dashboard = () => {
   // runs against defaults and real data waits a full poll interval
   const configLoaded = useStore((s) => s.configLoaded);
 
-  // Re-evaluate time periodically (for background switch and night mode)
-  const [hour, setHour] = useState(() => new Date().getHours());
+  // Minute tick (sparser asleep): children read the clock at render, e.g.
+  // meal/recipe date rollover, the price chart window and "updated" labels
+  const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => {
-      setHour(new Date().getHours());
-    }, 60 * 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const step = asleep ? 10 * MIN : MIN;
+    let timer;
+    const next = () => {
+      timer = setTimeout(() => {
+        setTick(Date.now());
+        next();
+      }, step - (Date.now() % step) + 50);
+    };
+    next();
+    return () => clearTimeout(timer);
+  }, [asleep]);
+  const hour = new Date(tick).getHours();
 
   // Last good headlines from the previous run, so a restart is never blank
   useEffect(() => {
@@ -98,14 +122,21 @@ const Dashboard = () => {
     });
   }, [setArticles]);
 
-  const onUserActivity = useAutoSleep(config.autosleep, configLoaded && isKioskDisplay);
+  const onUserActivity = useAutoSleep(config.autosleep, {
+    enabled: configLoaded,
+    controlsPanel: Platform.OS === 'web' && isKioskDisplay,
+  });
 
-  // Determine polling interval — reduced frequency between 2-8am
+  // Fallback for setups without an autosleep window
   const isNightMode = hour > 2 && hour < 8;
-  const minuteInterval = isNightMode ? 30 * 60 * 1000 : 10 * 60 * 1000;
+  const poll = (sleepIntervalMs, extra) => ({
+    enabled: configLoaded,
+    asleep,
+    sleepIntervalMs,
+    ...extra,
+  });
 
-  // Weather + stocks + news — every 10 min (30 min at night)
-  const fetchMinutely = useCallback(async () => {
+  const fetchWeather = useCallback(async () => {
     try {
       const result = await fetchCurrentWeather(config);
       if (result) {
@@ -115,40 +146,45 @@ const Dashboard = () => {
     } catch (err) {
       console.warn('Weather error:', err);
     }
+  }, [config, setWeather, setCurrentCondition]);
+  const runWeather = usePolling(fetchWeather, (isNightMode ? 30 : 10) * MIN, poll(HOUR));
 
+  // Own 30 min slot: riding the 10 min weather poll blew the 100/day free tiers
+  const fetchNewsPoll = useCallback(async () => {
     try {
       const articles = await fetchNews(config);
-      if (articles) {
-        setArticles(articles);
-      }
+      if (articles) setArticles(articles);
     } catch (err) {
       console.warn('News error:', err);
     }
+  }, [config, setArticles]);
+  const runNews = usePolling(fetchNewsPoll, 30 * MIN, poll(null));
 
+  const stocksConfigured = !!config.quotes && config.quotes.length > 0;
+  const fetchStocks = useCallback(async () => {
     try {
-      if (config.quotes && config.quotes.length > 0) {
-        const q = await fetchQuotes(config.quotes);
-        reportFetch('quotes', q, !!(q && q.length > 0));
-      }
+      const q = await fetchQuotes(config.quotes);
+      reportFetch('quotes', q, !!(q && q.length > 0));
     } catch (err) {
       console.warn('Stocks error:', err);
       reportFetch('quotes', null, false);
     }
+  }, [config.quotes, reportFetch]);
+  const runStocks = usePolling(fetchStocks, 10 * MIN, poll(null, {enabled: configLoaded && stocksConfigured}));
+
+  const poolCfg = config.smartDevices?.pool;
+  const poolOn = !!poolCfg?.host && poolCfg.showWidget !== false;
+  const fetchPool = useCallback(async () => {
     try {
-      const poolCfg = config.smartDevices?.pool;
-      if (poolCfg?.host && poolCfg.showWidget !== false) {
-        const status = await fetchPoolStatus(poolCfg.host);
-        if (status) setPool(status);
-      }
+      const status = await fetchPoolStatus(poolCfg.host);
+      if (status) setPool(status);
     } catch (err) {
       console.warn('Pool error:', err);
     }
-  }, [config, setWeather, setCurrentCondition, setArticles, reportFetch, setPool]);
+  }, [poolCfg?.host, setPool]);
+  const runPool = usePolling(fetchPool, 10 * MIN, poll(HOUR, {enabled: configLoaded && poolOn}));
 
-  usePolling(fetchMinutely, minuteInterval, configLoaded);
-
-  // Forecast + calendar + tibber prices — every 60 min
-  const fetchHourly = useCallback(async () => {
+  const fetchForecastPoll = useCallback(async () => {
     try {
       // Netatmo needs both an owned station and a live bearer; without them
       // this is a guaranteed 403 every hour. met.no is the default source.
@@ -166,7 +202,10 @@ const Dashboard = () => {
     } catch (err) {
       console.warn('Forecast error:', err);
     }
+  }, [config, setForecast]);
+  const runForecast = usePolling(fetchForecastPoll, HOUR, poll(3 * HOUR));
 
+  const fetchCalendarPoll = useCallback(async () => {
     try {
       const events = await fetchCalendar(config);
       if (events) {
@@ -175,105 +214,141 @@ const Dashboard = () => {
     } catch (err) {
       console.warn('Calendar error:', err);
     }
+  }, [config, setEvents]);
+  const runCalendar = usePolling(fetchCalendarPoll, HOUR, poll(3 * HOUR));
 
-    if (isTibberEnabled) {
-      try {
-        const tibberData = await fetchTibberPrices(config);
-        const priceInfo = tibberData?.currentSubscription?.priceInfo;
-        reportFetch(
-          'tibber',
-          tibberData,
-          !!(priceInfo?.current && priceInfo?.today?.length),
-        );
-      } catch (err) {
-        console.warn('Tibber error:', err);
-        reportFetch('tibber', null, false);
-      }
-
-      try {
-        const t2 = await fetchTibberDevices(config);
-        // Incomplete if a device section we had last time is missing now
-        const prev = useStore.getState().tibber2;
-        const missingSection =
-          !!prev && !!t2 && Object.keys(prev).some((k) => !t2[k]);
-        reportFetch('tibber2', t2, !!t2 && !missingSection);
-      } catch (err) {
-        console.warn('Tibber devices error:', err);
-        reportFetch('tibber2', null, false);
-      }
-    }
-
+  const fetchPrices = useCallback(async () => {
     try {
-      const lmSerial = config.smartDevices?.lamarzocco?.serialNumber;
-      const lmEnabled = config.smartDevices?.lamarzocco?.showWidget !== false;
-      if (lmSerial && lmEnabled) {
-        const lm = await fetchLaMarzoccoStatus(lmSerial);
-        if (lm) {
-          setLaMarzocco(lm);
-        }
+      const tibberData = await fetchTibberPrices(config);
+      const priceInfo = tibberData?.currentSubscription?.priceInfo;
+      reportFetch(
+        'tibber',
+        tibberData,
+        !!(priceInfo?.current && priceInfo?.today?.length),
+      );
+    } catch (err) {
+      console.warn('Tibber error:', err);
+      reportFetch('tibber', null, false);
+    }
+  }, [config, reportFetch]);
+  // Aligned to the top of the hour so `current` and `today` turn over on
+  // time, and a wake after an hour or day boundary refetches
+  const runPrices = usePolling(
+    fetchPrices,
+    HOUR,
+    poll(3 * HOUR, {enabled: configLoaded && isTibberEnabled, align: true}),
+  );
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const t2 = await fetchTibberDevices(config);
+      // Incomplete if a device section we had last time is missing now
+      const prev = useStore.getState().tibber2;
+      const missingSection =
+        !!prev && !!t2 && Object.keys(prev).some((k) => !t2[k]);
+      reportFetch('tibber2', t2, !!t2 && !missingSection);
+    } catch (err) {
+      console.warn('Tibber devices error:', err);
+      reportFetch('tibber2', null, false);
+    }
+  }, [config, reportFetch]);
+  const runDevices = usePolling(
+    fetchDevices,
+    HOUR,
+    poll(3 * HOUR, {enabled: configLoaded && isTibberEnabled}),
+  );
+
+  const lmSerial = config.smartDevices?.lamarzocco?.serialNumber;
+  const lmWidgetEnabled = config.smartDevices?.lamarzocco?.showWidget !== false;
+  const fetchLaMarzocco = useCallback(async () => {
+    try {
+      const lm = await fetchLaMarzoccoStatus(lmSerial);
+      if (lm) {
+        setLaMarzocco(lm);
       }
     } catch (err) {
       console.warn('LaMarzocco error:', err);
     }
-  }, [config, isTibberEnabled, setForecast, setEvents, reportFetch, setLaMarzocco]);
+  }, [lmSerial, setLaMarzocco]);
+  const runLaMarzocco = usePolling(
+    fetchLaMarzocco,
+    HOUR,
+    poll(null, {enabled: configLoaded && !!lmSerial && lmWidgetEnabled}),
+  );
 
-  usePolling(fetchHourly, 60 * 60 * 1000, configLoaded);
-
-  // Refetch everything immediately when network reconnects
-  useNetworkRefresh(useCallback(() => {
-    fetchMinutely();
-    fetchHourly();
-    tibberFeedCleanupRef.current?.reconnectNow?.();
-  }, [fetchMinutely, fetchHourly]));
-
-  // Tibber live feed (WebSocket) — continuous
+  // Tibber live feed (WebSocket), closed while asleep
   const tibberFeedCleanupRef = useRef(null);
 
-  // Settings refresh button. Refs so the run sees the config saved in the
-  // same tap rather than the callbacks from the previous render
+  const pollers = {
+    weather: runWeather,
+    news: runNews,
+    stocks: runStocks,
+    pool: runPool,
+    forecast: runForecast,
+    calendar: runCalendar,
+    tibber: runPrices,
+    tibber2: runDevices,
+    lamarzocco: runLaMarzocco,
+  };
+  const pollersRef = useRef(pollers);
+  pollersRef.current = pollers;
+
+  // Paused pollers (news while asleep) defer the reconnect run to the wake
+  useNetworkRefresh(useCallback(() => {
+    Object.values(pollersRef.current).forEach((runNow) => runNow());
+    tibberFeedCleanupRef.current?.reconnectNow?.();
+  }, []));
+
+  // Settings refresh and saves. runNow picks up the latest callbacks, so the
+  // run sees the config saved in the same tap
   const refreshNonce = useStore((s) => s.refreshNonce);
-  const fetchersRef = useRef({fetchMinutely, fetchHourly});
-  fetchersRef.current = {fetchMinutely, fetchHourly};
   useEffect(() => {
     if (!refreshNonce) return;
-    fetchersRef.current.fetchMinutely();
-    fetchersRef.current.fetchHourly();
-    tibberFeedCleanupRef.current?.reconnectNow?.();
-  }, [refreshNonce]);
-  useEffect(() => {
-    if (isTibberEnabled && config.tibber2?.pulse && config.tibber1?.apiEndpoint?.apiKey && config.tibber1?.homeId) {
-      const cleanup = createTibberFeed(
-        config,
-        (data) => setTibberFeed(data),
-      );
-      tibberFeedCleanupRef.current = cleanup;
-      return () => {
-        tibberFeedCleanupRef.current = null;
-        cleanup();
-      };
-    } else {
-      setTibberFeed(null);
+    const keys = useStore.getState().refreshKeys;
+    useStore.setState({refreshKeys: []});
+    const wanted = keys === null ? Object.keys(pollersRef.current) : keys;
+    wanted.forEach((k) => pollersRef.current[k]?.(true));
+    if (keys === null || keys.includes('tibber')) {
+      tibberFeedCleanupRef.current?.reconnectNow?.();
     }
+  }, [refreshNonce]);
+
+  const tibberApiKey = config.tibber1?.apiEndpoint?.apiKey;
+  const tibberHomeId = config.tibber1?.homeId;
+  const feedWanted = isTibberEnabled && !!config.tibber2?.pulse && !!tibberApiKey && !!tibberHomeId;
+  useEffect(() => {
+    if (!feedWanted) {
+      setTibberFeed(null);
+      return;
+    }
+    // Keep the last reading on screen; the feed reopens on wake
+    if (asleep) return;
+    const cleanup = createTibberFeed(
+      useStore.getState().config,
+      (data) => setTibberFeed(data),
+    );
+    tibberFeedCleanupRef.current = cleanup;
+    return () => {
+      tibberFeedCleanupRef.current = null;
+      cleanup?.();
+    };
   }, [
-    config.tibber1?.apiEndpoint?.apiKey,
-    config.tibber1?.homeId,
+    feedWanted,
+    tibberApiKey,
+    tibberHomeId,
     config.tibber1?.active,
     config.tibber2?.pulse,
-    isTibberEnabled,
+    asleep,
     setTibberFeed,
   ]);
 
   // Show stocks widget OR tibber price chart in middle-right column
-  const stocksConfigured = config.quotes && config.quotes.length > 0;
-  const hasStocks = stocksConfigured && quotes && quotes.length > 0;
+  const hasStocks = stocksConfigured && has.quotes;
   const hasTibberPrices =
     isTibberEnabled &&
     config.showEnergyPrice !== false &&
     config.showEnergyChart !== false &&
-    tibber &&
-    tibber.currentSubscription &&
-    tibber.currentSubscription.priceInfo &&
-    tibber.currentSubscription.priceInfo.today;
+    has.tibberToday;
 
   const slots = resolveSlots(config);
   const showsHeadlines = Object.values(slots).includes('headlines');
@@ -319,24 +394,18 @@ const Dashboard = () => {
     }
   };
 
-  const tibber2 = useStore((s) => s.tibber2);
-  const tibberFeed = useStore((s) => s.tibberFeed);
   const hasEnergyWidgets =
     isTibberEnabled &&
-    ((tibber && tibber.currentSubscription?.priceInfo?.current) ||
-    (tibber2 && (tibber2.inverter || tibber2.thermostat || tibber2.battery)) ||
-    (tibber2 && tibber2.electricVehicles && tibber2.electricVehicles.length > 0) ||
-    (tibberFeed && tibberFeed.power));
-  const lmWidgetEnabled = config.smartDevices?.lamarzocco?.showWidget !== false;
-  const hasLaMarzocco = !!lamarzocco && lmWidgetEnabled;
+    (has.tibberCurrent || has.inverter || has.thermostat || has.battery || has.ev || has.power);
+  const hasLaMarzocco = has.lamarzocco && lmWidgetEnabled;
   const poolWidgetEnabled = config.smartDevices?.pool?.showWidget !== false;
-  const hasPool = !!pool && poolWidgetEnabled;
+  const hasPool = has.pool && poolWidgetEnabled;
 
   const showTile = (tile) => config.layout?.tiles?.[tile] !== false;
-  const showConsumption = !!tibberFeed?.power && showTile('consumption');
-  const showBattery = !!tibber2?.battery && showTile('battery');
-  const showEV = tibber2?.electricVehicles?.length > 0 && showTile('ev');
-  const showThermostat = !!tibber2?.thermostat && showTile('thermostat');
+  const showConsumption = has.power && showTile('consumption');
+  const showBattery = has.battery && showTile('battery');
+  const showEV = has.ev && showTile('ev');
+  const showThermostat = has.thermostat && showTile('thermostat');
 
   // Background: custom URL per time of day, fallback to bundled defaults
   const isEvening = hour >= 19 || hour < 7;
@@ -350,9 +419,10 @@ const Dashboard = () => {
     <ImageBackground
       source={bgSource}
       style={styles.background}
-      resizeMode="cover"
-      onTouchStart={onUserActivity}>
+      resizeMode="cover">
+      {/* Not on ImageBackground: it forwards the prop to its Image, under the widgets */}
       <View
+        onTouchStart={onUserActivity}
         style={[
           styles.container,
           {

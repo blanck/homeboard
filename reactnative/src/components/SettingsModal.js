@@ -20,9 +20,6 @@ import useStore from '../store';
 import {translate} from '../utils/translations';
 import defaults from '../config/defaults';
 import {pruneMeals} from '../utils/meals';
-import {fetchNews} from '../services/newsService';
-import {fetchTibberPrices, fetchTibberDevices} from '../services/tibberService';
-import {fetchLaMarzoccoStatus} from '../services/lamarzoccoService';
 import GeneralTab from './settings/GeneralTab';
 import LayoutTab from './settings/LayoutTab';
 import WeatherTab from './settings/WeatherTab';
@@ -122,10 +119,6 @@ const SettingsModal = () => {
   ];
   const setConfig = useStore((s) => s.setConfig);
   const setKeepAwake = useStore((s) => s.setKeepAwake);
-  const setArticles = useStore((s) => s.setArticles);
-  const setTibber = useStore((s) => s.setTibber);
-  const setTibber2 = useStore((s) => s.setTibber2);
-  const setLaMarzocco = useStore((s) => s.setLaMarzocco);
   const requestRefresh = useStore((s) => s.requestRefresh);
   const lang = config.language || 'en';
 
@@ -259,8 +252,8 @@ const SettingsModal = () => {
 
   // close=false lets the Save button persist without dismissing the modal
   // overrides: fields changed outside the form (phone setup) that must be
-  // saved before the form state has caught up
-  const saveSettings = async (close = true, overrides = null) => {
+  // saved before the form state has caught up. refresh: rerun every poller
+  const saveSettings = async (close = true, overrides = null, refresh = false) => {
     // eslint-disable-next-line no-shadow
     const form = {...formRef.current, ...overrides};
     const newConfig = {
@@ -445,8 +438,14 @@ const SettingsModal = () => {
     }
 
     // A spurious mismatch only costs one extra fetch
-    const newsChanged =
-      JSON.stringify(newConfig.newsapi) !== JSON.stringify(config.newsapi);
+    const differs = (pick) => JSON.stringify(pick(newConfig)) !== JSON.stringify(pick(config));
+    const newsChanged = differs((c) => c.newsapi);
+    const tibberChanged = differs((c) => [c.energyProvider, c.tibber1, c.tibber2]);
+    const lmChanged = differs((c) => c.smartDevices?.lamarzocco);
+    const weatherChanged = differs((c) => [c.location, c.weather, c.netatmo]);
+    const calendarChanged = differs((c) => c.calendar);
+    const stocksChanged = differs((c) => c.quotes);
+    const poolChanged = differs((c) => c.smartDevices?.pool);
 
     setConfig(newConfig);
     setKeepAwake(form.keepAwake);
@@ -457,32 +456,21 @@ const SettingsModal = () => {
       savedTimer.current = setTimeout(() => setJustSaved(false), 2000);
     }
 
-    if (newsChanged) {
-      fetchNews(newConfig).then((articles) => {
-        if (articles) setArticles(articles);
-      }).catch(() => {});
+    // The dashboard pollers fetch with the config just set. An explicit save
+    // also refetches La Marzocco: a re-login keeps the same serial
+    if (refresh) {
+      requestRefresh();
+      return;
     }
-
-    // Hourly poll would leave a freshly connected machine hidden for up to an
-    // hour; a re-login keeps the same serial, so fetch on every save
-    const lmSerial = newConfig.smartDevices.lamarzocco.serialNumber;
-    if (lmSerial && newConfig.smartDevices.lamarzocco.showWidget) {
-      fetchLaMarzoccoStatus(lmSerial)
-        .then((lm) => lm && setLaMarzocco(lm))
-        .catch(() => {});
-    }
-
-    // Re-fetch tibber data with new config
-    if (newConfig.energyProvider === 'tibber') {
-      if (newConfig.tibber1?.apiEndpoint?.apiKey) {
-        fetchTibberPrices(newConfig).then((data) => {
-          if (data) setTibber(data);
-        }).catch((err) => console.warn('Tibber prices fetch error:', err));
-      }
-      fetchTibberDevices(newConfig).then((data) => {
-        if (data) setTibber2(data);
-      }).catch((err) => console.warn('Tibber devices fetch error:', err));
-    }
+    const keys = [];
+    if (newsChanged) keys.push('news');
+    if (weatherChanged) keys.push('weather', 'forecast');
+    if (calendarChanged) keys.push('calendar');
+    if (stocksChanged) keys.push('stocks');
+    if (poolChanged) keys.push('pool');
+    if (tibberChanged) keys.push('tibber', 'tibber2');
+    if (lmChanged || !close) keys.push('lamarzocco');
+    if (keys.length) requestRefresh(keys);
   };
 
   const tabProps = {
@@ -556,10 +544,7 @@ const SettingsModal = () => {
             )}
             <View style={styles.headerActions}>
               <TouchableOpacity
-                onPress={() => {
-                  saveSettings(true);
-                  requestRefresh();
-                }}
+                onPress={() => saveSettings(true, null, true)}
                 style={styles.reloadBtn}>
                 <Icon name="refresh" size={24} color="#cccccc" />
               </TouchableOpacity>

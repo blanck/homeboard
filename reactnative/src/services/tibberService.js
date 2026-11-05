@@ -433,96 +433,159 @@ export const createTibberFeed = (config, onData, onConnect, onDisconnect) => {
 
   let ws = null;
   let reconnectTimer = null;
+  let watchdogTimer = null;
+  let connecting = false;
   let stopped = false;
   let failures = 0;
+  let lastDataAt = 0;
   const MAX_DELAY_MS = 10 * 60 * 1000;
+  // Pulse sends every few seconds, so this long without data means a dead socket
+  const SILENCE_MS = 90 * 1000;
+  const FRESH_MS = 30 * 1000;
+
+  const clearTimers = () => {
+    clearTimeout(reconnectTimer);
+    clearTimeout(watchdogTimer);
+    reconnectTimer = null;
+    watchdogTimer = null;
+  };
+
+  // Detach first so the old socket's late onclose cannot schedule another connect
+  const dropSocket = () => {
+    const old = ws;
+    ws = null;
+    if (!old) return;
+    old.onopen = null;
+    old.onmessage = null;
+    old.onerror = null;
+    old.onclose = null;
+    try { old.close(); } catch {}
+  };
+
+  const send = (sock, msg) => {
+    try { sock.send(JSON.stringify(msg)); } catch {}
+  };
 
   const scheduleReconnect = () => {
-    if (stopped) return;
+    if (stopped || reconnectTimer) return;
     const delay = Math.min(30000 * Math.pow(2, Math.min(failures, 5)), MAX_DELAY_MS);
-    reconnectTimer = setTimeout(connect, delay);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+
+  const fail = () => {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+    dropSocket();
+    failures++;
+    if (onDisconnect) {
+      onDisconnect();
+    }
+    scheduleReconnect();
+  };
+
+  const armWatchdog = () => {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(fail, SILENCE_MS);
   };
 
   const connect = async () => {
+    if (stopped || connecting) return;
+    connecting = true;
+    let wsUrl;
+    try {
+      wsUrl = await fetchWebsocketUrl(apiKey, queryUrl) || feedUrl;
+    } finally {
+      connecting = false;
+    }
     if (stopped) return;
-
-    const wsUrl = await fetchWebsocketUrl(apiKey, queryUrl) || feedUrl;
     if (!wsUrl) {
       failures++;
       scheduleReconnect();
       return;
     }
 
+    let sock;
     try {
-      ws = new WebSocket(wsUrl, 'graphql-transport-ws');
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({type: 'connection_init', payload: {token: apiKey}}));
-      };
-
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'connection_ack') {
-          failures = 0;
-          ws.send(
-            JSON.stringify({
-              id: '1',
-              type: 'subscribe',
-              payload: {
-                query: `subscription { liveMeasurement(homeId:"${homeId}") { timestamp power accumulatedConsumption maxPower powerProduction } }`,
-              },
-            }),
-          );
-          if (onConnect) {
-            onConnect();
-          }
-        } else if (msg.type === 'next' && msg.payload && msg.payload.data) {
-          if (onData) {
-            onData(msg.payload.data.liveMeasurement);
-          }
-        }
-      };
-
-      ws.onerror = () => {};
-
-      ws.onclose = () => {
-        if (onDisconnect) {
-          onDisconnect();
-        }
-        failures++;
-        scheduleReconnect();
-      };
+      sock = new WebSocket(wsUrl, 'graphql-transport-ws');
     } catch {
       failures++;
       scheduleReconnect();
+      return;
     }
+    dropSocket();
+    ws = sock;
+    lastDataAt = 0;
+    armWatchdog();
+
+    sock.onopen = () => {
+      send(sock, {type: 'connection_init', payload: {token: apiKey}});
+    };
+
+    sock.onmessage = (event) => {
+      if (sock !== ws) return;
+      let msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (msg?.type === 'connection_ack') {
+        send(sock, {
+          id: '1',
+          type: 'subscribe',
+          payload: {
+            query: `subscription { liveMeasurement(homeId:"${homeId}") { timestamp power accumulatedConsumption maxPower powerProduction } }`,
+          },
+        });
+        if (onConnect) {
+          onConnect();
+        }
+      } else if (msg?.type === 'next') {
+        const measurement = msg.payload?.data?.liveMeasurement;
+        if (!measurement) return;
+        // Reset backoff on data, not ack, so an offline Pulse still backs off
+        failures = 0;
+        lastDataAt = Date.now();
+        armWatchdog();
+        if (onData) {
+          onData(measurement);
+        }
+      } else if (msg?.type === 'ping') {
+        send(sock, {type: 'pong'});
+      } else if (msg?.type === 'error' || msg?.type === 'complete') {
+        fail();
+      }
+    };
+
+    sock.onerror = () => {};
+
+    sock.onclose = () => {
+      if (sock === ws) {
+        fail();
+      }
+    };
   };
 
   connect();
 
   const cleanup = () => {
     stopped = true;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-    }
-    if (ws) {
-      ws.close();
-    }
+    clearTimers();
+    dropSocket();
   };
 
   cleanup.reconnectNow = () => {
-    if (stopped) return;
+    if (stopped || connecting) return;
+    if (ws && ws.readyState === WebSocket.OPEN && Date.now() - lastDataAt < FRESH_MS) {
+      return;
+    }
     failures = 0;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (ws && ws.readyState !== WebSocket.OPEN) {
-      try { ws.close(); } catch {}
-    }
-    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-      connect();
-    }
+    clearTimers();
+    dropSocket();
+    connect();
   };
 
   return cleanup;

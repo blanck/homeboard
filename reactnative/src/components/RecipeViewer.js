@@ -17,7 +17,6 @@ import {
   isIngredientHeading,
   isStepHeading,
 } from '../utils/recipe';
-import { addTodos } from '../utils/todos';
 import { convertUnits, resolveUnits } from '../utils/units';
 import { fs, sp } from '../utils/scale';
 
@@ -37,11 +36,9 @@ const RecipeViewer = () => {
   const units = useStore(s => resolveUnits(s.config.units));
   // Ticked ingredients and steps, so the cook can keep their place
   const [ticked, setTicked] = useState({});
-  const [added, setAdded] = useState(null);
 
   useEffect(() => {
     setTicked({});
-    setAdded(null);
   }, [recipe]);
 
   if (!recipe) return null;
@@ -51,12 +48,6 @@ const RecipeViewer = () => {
   const toggle = key => setTicked(prev => ({ ...prev, [key]: !prev[key] }));
   const isHeading = item => isIngredientHeading(item, recipe.source);
   const measured = text => convertUnits(text, units);
-
-  const addToShopping = async () => {
-    setAdded(
-      await addTodos(ingredients.filter(i => !isHeading(i)).map(measured)),
-    );
-  };
 
   const openOriginal = () => {
     hideRecipe();
@@ -102,25 +93,6 @@ const RecipeViewer = () => {
                 <Text style={styles.meta}>{meta.join(' · ')}</Text>
               ) : null}
               <View style={styles.actions}>
-                {ingredients.length ? (
-                  <TouchableOpacity
-                    style={styles.action}
-                    onPress={addToShopping}
-                  >
-                    <Icon
-                      name={added === null ? 'cart-plus' : 'check'}
-                      size={sp(18)}
-                      color="#ffffff"
-                    />
-                    <Text style={styles.actionText}>
-                      {added === null
-                        ? translate('addToShopping', lang)
-                        : added
-                        ? `${translate('addedToShopping', lang)} (${added})`
-                        : translate('alreadyOnShopping', lang)}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
                 {recipe.url ? (
                   <TouchableOpacity
                     style={[styles.action, styles.actionQuiet]}
@@ -287,11 +259,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: sp(8),
     paddingHorizontal: sp(16),
-  },
-  actionText: {
-    color: '#ffffff',
-    fontSize: fs(15),
-    fontWeight: '600',
   },
   actionQuiet: {
     backgroundColor: 'transparent',

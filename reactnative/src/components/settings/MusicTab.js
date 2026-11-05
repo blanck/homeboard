@@ -145,7 +145,9 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
     const updated = base.map((cat, i) => {
       if (i !== target) return cat;
       if (cat.items.some((item) => item.uri === favorite.uri)) return cat;
-      return {...cat, items: [...cat.items, favorite]};
+      // The account name is only shown in search results, never saved with the pick
+      const {creator, ...item} = favorite;
+      return {...cat, items: [...cat.items, item]};
     });
     updateField('quickPicks', updated);
   };
@@ -214,11 +216,7 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
   const displayItems = favFilter.trim()
     ? [
         ...allItems.filter((f) => f.title.toLowerCase().includes(favFilter.toLowerCase())),
-        ...spotifyResults.map(({uri, title, source, creator}) => ({
-          uri,
-          title: creator ? `${title} · ${creator}` : title,
-          source,
-        })),
+        ...spotifyResults.map(({uri, title, source, creator}) => ({uri, title, source, creator})),
       ]
     : allItems;
 
@@ -493,9 +491,11 @@ const MusicTab = ({form, updateField, lang, Section, Field}) => {
                           numberOfLines={1}>
                           {fav.title}
                         </Text>
-                        {fav.source && (
-                          <Text style={styles.favSource}>{fav.source}</Text>
-                        )}
+                        {fav.source || fav.creator ? (
+                          <Text style={styles.favSource} numberOfLines={1}>
+                            {[fav.source, fav.creator].filter(Boolean).join(' · ')}
+                          </Text>
+                        ) : null}
                       </View>
                     </TouchableOpacity>
                   );

@@ -10,7 +10,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import useStore from '../store';
 import * as sonosService from '../services/sonosService';
 import {translate} from '../utils/translations';
@@ -18,6 +18,9 @@ import {fs, sp} from '../utils/scale';
 
 const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
 const SEND_THROTTLE_MS = 150;
+const VOLUME_POLL_MS = 3000;
+// Group membership changes rarely; GetZoneGroupState is the heaviest Sonos reply
+const TOPOLOGY_REFRESH_MS = 15000;
 
 const snapshot = (speakers) => ({
   vols: Object.fromEntries(speakers.map((s) => [s.ip, s.volume])),
@@ -32,6 +35,7 @@ const GroupVolumePopup = () => {
   const hide = useStore((s) => s.hideGroupVolume);
   const anchor = useStore((s) => s.popupAnchor);
   const config = useStore((s) => s.config);
+  const asleep = useStore((s) => s.asleep);
   const sonosIp = config.sonos?.ip;
   const lang = config.language || 'en';
 
@@ -39,6 +43,7 @@ const GroupVolumePopup = () => {
   const [available, setAvailable] = useState([]);
   const [coordinatorIp, setCoordinatorIp] = useState(null);
   const lastTouchRef = useRef(0);
+  const topologyRef = useRef(null);
   const barGeomRef = useRef({});
   const barRefs = useRef({});
   const sendPendingRef = useRef({});
@@ -65,34 +70,43 @@ const GroupVolumePopup = () => {
     }
   }, [visible, slideAnim, fadeAnim]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refreshTopology = true) => {
     if (!sonosIp) return;
-    const groups = await sonosService.getZoneGroups(sonosIp);
-    const mine = groups.find((g) => g.members.some((m) => m.ip === sonosIp));
-    const members = mine ? mine.members : [{name: '', ip: sonosIp}];
-    const others = groups
-      .filter((g) => g !== mine)
-      .flatMap((g) => g.members);
+    let topo = topologyRef.current;
+    if (refreshTopology || !topo || Date.now() - topo.at > TOPOLOGY_REFRESH_MS) {
+      const groups = await sonosService.getZoneGroups(sonosIp);
+      const mine = groups.find((g) => g.members.some((m) => m.ip === sonosIp));
+      topo = {
+        members: mine ? mine.members : [{name: '', ip: sonosIp}],
+        others: groups.filter((g) => g !== mine).flatMap((g) => g.members),
+        coordinatorIp: mine ? mine.coordinatorIp : sonosIp,
+        at: Date.now(),
+      };
+      topologyRef.current = topo;
+    }
+    const {members, others} = topo;
     const volumes = await Promise.all(
       members.map((m) => sonosService.getVolume(m.ip)),
     );
     // Don't clobber optimistic values while the user is adjusting
     if (Date.now() - lastTouchRef.current < 2500) return;
-    setCoordinatorIp(mine ? mine.coordinatorIp : sonosIp);
+    setCoordinatorIp(topo.coordinatorIp);
     setSpeakers(members.map((m, i) => ({...m, volume: volumes[i] ?? 0})));
     setAvailable(others);
   }, [sonosIp]);
 
   useEffect(() => {
     if (!visible) {
+      topologyRef.current = null;
       setSpeakers([]);
       setAvailable([]);
       return;
     }
+    if (asleep) return;
     load();
-    const timer = setInterval(load, 3000);
+    const timer = setInterval(() => load(false), VOLUME_POLL_MS);
     return () => clearInterval(timer);
-  }, [visible, load]);
+  }, [visible, asleep, load]);
 
   // Local state updates on every move; network sends are throttled per ip
   const setSpeakerVolume = useCallback((ip, volume) => {
@@ -247,6 +261,7 @@ const GroupVolumePopup = () => {
         </Text>
         {removable ? (
           <TouchableOpacity
+            style={styles.removeButton}
             hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
             onPress={() => removeSpeaker(key)}>
             <Icon name="close" size={18} color="#666666" />
@@ -256,15 +271,17 @@ const GroupVolumePopup = () => {
       </View>
       <View style={styles.controlRow}>
         <TouchableOpacity
+          style={styles.stepButton}
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
           onPress={() => apply(value - 2)}>
-          <Icon name="volume-down" size={26} color="#ffffff" />
+          <Icon name="volume-medium" size={26} color="#ffffff" />
         </TouchableOpacity>
         {renderBar(key, value, apply)}
         <TouchableOpacity
+          style={styles.stepButton}
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
           onPress={() => apply(value + 2)}>
-          <Icon name="volume-up" size={26} color="#ffffff" />
+          <Icon name="volume-high" size={26} color="#ffffff" />
         </TouchableOpacity>
       </View>
     </View>
@@ -299,7 +316,7 @@ const GroupVolumePopup = () => {
               key={s.ip}
               style={styles.addRow}
               onPress={() => addSpeaker(s.ip)}>
-              <Icon name="add-circle-outline" size={22} color="#888888" />
+              <Icon name="plus-circle-outline" size={22} color="#888888" />
               <Text style={styles.addName} numberOfLines={1}>
                 {s.name}
               </Text>
@@ -332,13 +349,12 @@ const styles = StyleSheet.create({
     maxWidth: '90%',
   },
   speakerBlock: {
-    paddingVertical: sp(8),
+    paddingVertical: sp(2),
   },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: sp(4),
     gap: sp(8),
   },
   speakerName: {
@@ -357,36 +373,43 @@ const styles = StyleSheet.create({
   controlRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: sp(10),
+    gap: sp(4),
+  },
+  // Real padding, since react-native-web ignores hitSlop
+  stepButton: {
+    padding: sp(8),
+  },
+  removeButton: {
+    padding: sp(6),
   },
   // Tall touch target wrapping a thin visual track + thumb
   bar: {
     flex: 1,
-    height: sp(36),
+    height: sp(52),
     justifyContent: 'center',
     // Without this the browser takes the touch as a pan and cancels the drag
     ...(Platform.OS === 'web' ? {touchAction: 'none'} : null),
   },
   barTrack: {
-    height: 5,
+    height: 6,
     backgroundColor: '#444444',
     borderRadius: 3,
     overflow: 'hidden',
   },
   barFill: {
-    height: 5,
+    height: 6,
     backgroundColor: '#0B77EF',
     borderRadius: 3,
   },
   thumb: {
     position: 'absolute',
     top: '50%',
-    width: sp(14),
-    height: sp(14),
-    borderRadius: sp(7),
+    width: sp(22),
+    height: sp(22),
+    borderRadius: sp(11),
     backgroundColor: '#ffffff',
-    marginLeft: -sp(7),
-    marginTop: -sp(7),
+    marginLeft: -sp(11),
+    marginTop: -sp(11),
   },
   divider: {
     height: 1,

@@ -1,27 +1,8 @@
-import {isShared, remoteGet, remoteSet, remoteRemove} from './shared-store';
+import {isShared, readShared, remoteSet, remoteRemove} from './shared-store';
 
 const PREFIX = 'hbas:';
 
 const ls = () => window.localStorage;
-
-// Shared keys live on the server; localStorage keeps a copy so the kiosk still
-// boots from its last known config if the store is unreachable.
-const readShared = async (key) => {
-  try {
-    const value = await remoteGet(key);
-    // Empty store on first run: adopt this browser's config rather than
-    // handing back null and wiping a device that was already configured.
-    if (value === null) {
-      const local = ls().getItem(PREFIX + key);
-      if (local) await remoteSet(key, local).catch(() => {});
-      return local;
-    }
-    ls().setItem(PREFIX + key, value);
-    return value;
-  } catch {
-    return ls().getItem(PREFIX + key);
-  }
-};
 
 const writeShared = async (key, value) => {
   ls().setItem(PREFIX + key, String(value));
@@ -34,7 +15,7 @@ const writeShared = async (key, value) => {
 
 const AsyncStorage = {
   getItem: async (key) =>
-    isShared(key) ? readShared(key) : ls().getItem(PREFIX + key),
+    isShared(key) ? readShared(key, PREFIX + key) : ls().getItem(PREFIX + key),
   setItem: async (key, value) => {
     if (isShared(key)) return writeShared(key, value);
     ls().setItem(PREFIX + key, String(value));

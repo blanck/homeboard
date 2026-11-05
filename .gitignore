@@ -47,3 +47,4 @@ web/dist/
 # web kiosk runtime state (holds secrets) and per-Pi overrides
 web/settings-store.json
 web/kiosk.local.json
+web/uploads/

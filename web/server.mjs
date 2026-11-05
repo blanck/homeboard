@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import {exec} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
@@ -54,6 +55,49 @@ const isPrivateAddress = (addr = '') => {
   if (/^169\.254\./.test(ip)) return true;
   if (/^fe80:/i.test(ip) || /^f[cd]/i.test(ip)) return true;
   return false;
+};
+
+// DNS rebinding points a public name at this server, so only LAN-style names
+// and private IPs may reach the API. Extra names: HOMEBOARD_ALLOWED_HOSTS=a,b
+const EXTRA_HOSTS = new Set(
+  (process.env.HOMEBOARD_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
+);
+const isAllowedHost = (hostHeader) => {
+  if (!hostHeader) return true;
+  const h = String(hostHeader).toLowerCase();
+  const name = h.startsWith('[') ? h.slice(1, h.indexOf(']')) : h.replace(/:\d+$/, '');
+  if (EXTRA_HOSTS.has(name)) return true;
+  if (/^[\d.]+$/.test(name) || name.includes(':')) return isPrivateAddress(name);
+  if (!/^[a-z0-9.-]+$/.test(name)) return false;
+  if (!name.includes('.')) return true;
+  return /\.(local|lan|home|internal|localhost|home\.arpa)$/.test(name);
+};
+
+// The IP check alone lets any page the kiosk or phone renders post here, since
+// those requests come from a LAN address too
+const crossSiteReason = (req) => {
+  if (req.headers['sec-fetch-site'] === 'cross-site') return 'cross-site request';
+  const {origin} = req.headers;
+  if (origin === undefined) return null;
+  try {
+    if (new URL(origin).host === String(req.headers.host || '').toLowerCase()) return null;
+  } catch {}
+  return 'cross-origin request';
+};
+
+const apiDenied = (req) => {
+  if (!isPrivateAddress(req.socket.remoteAddress)) return 'LAN only';
+  if (!isAllowedHost(req.headers.host)) return 'unknown host';
+  return crossSiteReason(req);
+};
+
+const fail = (res, status, message = '') => {
+  if (res.writableEnded) return;
+  if (!res.headersSent) res.writeHead(status);
+  res.end(message);
 };
 
 const STRIP_REQUEST_HEADERS = new Set([
@@ -127,9 +171,10 @@ const forwardRequest = (target, method, headers, body, res, redirectsLeft) => {
   );
 
   upstream.on('timeout', () => upstream.destroy(new Error('upstream timeout')));
-  upstream.on('error', (err) => {
-    if (!res.headersSent) res.writeHead(502);
-    res.end(`Proxy error: ${err.message}`);
+  upstream.on('error', (err) => fail(res, 502, `Proxy error: ${err.message}`));
+  // The page went away mid-response: stop pulling the upstream body
+  res.once('close', () => {
+    if (!res.writableEnded) upstream.destroy();
   });
 
   if (body) {
@@ -283,8 +328,39 @@ const handleUpload = (req, res, requestUrl) => {
   });
 };
 
+// dist/ only changes on deploy, so each file is compressed once and kept in memory
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg', '.ttf', '.map']);
+const gzipCache = new Map();
+const gzipped = (file, stat, cb) => {
+  const hit = gzipCache.get(file);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    cb(null, hit.gz);
+    return;
+  }
+  fs.readFile(file, (err, data) => {
+    if (err) {
+      cb(err);
+      return;
+    }
+    zlib.gzip(data, (zErr, gz) => {
+      if (zErr) {
+        cb(zErr);
+        return;
+      }
+      gzipCache.set(file, {mtimeMs: stat.mtimeMs, size: stat.size, gz});
+      cb(null, gz);
+    });
+  });
+};
+
 const serveStatic = (req, res, requestUrl) => {
-  let filePath = decodeURIComponent(requestUrl.pathname);
+  let filePath;
+  try {
+    filePath = decodeURIComponent(requestUrl.pathname);
+  } catch {
+    fail(res, 400, 'Bad path');
+    return;
+  }
   // OAuth redirects land on /oauth/*; serve the app and let it handle the code
   if (filePath === '/' || filePath.startsWith('/oauth/')) filePath = '/index.html';
   // Root uploads at UPLOAD_DIR itself, not its parent, or /uploads/../ would
@@ -297,18 +373,43 @@ const serveStatic = (req, res, requestUrl) => {
     res.end();
     return;
   }
-  fs.readFile(resolved, (err, data) => {
-    if (err) {
-      res.writeHead(404);
-      res.end('Not found');
+  fs.stat(resolved, (statErr, stat) => {
+    if (statErr || !stat.isFile()) {
+      fail(res, 404, 'Not found');
       return;
     }
     const ext = path.extname(resolved).toLowerCase();
-    res.writeHead(200, {
+    const headers = {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400',
+      // Vite content-hashes everything under /assets/, so it never changes in place
+      'Cache-Control':
+        ext === '.html'
+          ? 'no-cache'
+          : !isUpload && filePath.startsWith('/assets/')
+            ? 'public, max-age=31536000, immutable'
+            : 'public, max-age=86400',
+      Vary: 'Accept-Encoding',
+    };
+    const wantsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (wantsGzip && COMPRESSIBLE.has(ext)) {
+      gzipped(resolved, stat, (err, gz) => {
+        if (err) {
+          fail(res, 500);
+          return;
+        }
+        res.writeHead(200, {...headers, 'Content-Encoding': 'gzip', 'Content-Length': gz.length});
+        res.end(req.method === 'HEAD' ? undefined : gz);
+      });
+      return;
+    }
+    fs.readFile(resolved, (err, data) => {
+      if (err) {
+        fail(res, 404, 'Not found');
+        return;
+      }
+      res.writeHead(200, {...headers, 'Content-Length': data.length});
+      res.end(req.method === 'HEAD' ? undefined : data);
     });
-    res.end(data);
   });
 };
 
@@ -573,20 +674,44 @@ const STORE_KEYS = new Set([
   'lamarzocco_credentials',
 ]);
 
+// `deleted` marks keys removed on purpose, so a browser holding an old
+// localStorage copy does not push them back (see readShared in the shims)
 const readStore = () => {
+  let text;
   try {
-    return JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
+    text = fs.readFileSync(STORE_FILE, 'utf8');
   } catch {
-    return {rev: 0, values: {}};
+    return {rev: 0, values: {}, deleted: {}};
+  }
+  try {
+    const store = JSON.parse(text);
+    return {rev: store.rev || 0, values: store.values || {}, deleted: store.deleted || {}};
+  } catch (err) {
+    // Keep the damaged file for inspection; browsers re-adopt their local
+    // copies into the fresh store. A new rev makes every kiosk reload.
+    const aside = `${STORE_FILE}.corrupt-${Date.now()}`;
+    log('settings store unreadable, moved to', aside, err.message);
+    try {
+      fs.renameSync(STORE_FILE, aside);
+    } catch {}
+    return {rev: Date.now(), values: {}, deleted: {}};
   }
 };
 
 const writeStore = (store) => {
-  // Write-then-rename so a yanked power cord cannot leave a half-written file
+  // Write, fsync, then rename so a yanked power cord cannot leave a half-written file
   const tmp = STORE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(store));
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeSync(fd, JSON.stringify(store));
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, STORE_FILE);
 };
+
+const STORE_MAX_BYTES = 2 * 1024 * 1024;
 
 const handleStore = (req, res, requestUrl) => {
   const key = requestUrl.searchParams.get('key') || '';
@@ -602,21 +727,38 @@ const handleStore = (req, res, requestUrl) => {
     return;
   }
   if (req.method === 'GET') {
-    const value = readStore().values[key];
+    const store = readStore();
+    const value = store.values[key];
     res.writeHead(200, {'Content-Type': 'application/json; charset=utf-8'});
-    res.end(JSON.stringify({value: value === undefined ? null : value}));
+    res.end(JSON.stringify({value: value === undefined ? null : value, deleted: !!store.deleted[key]}));
     return;
   }
   if (req.method === 'POST' || req.method === 'DELETE') {
-    let body = '';
+    // Buffers, not strings: a multi-byte character split across two chunks
+    // would otherwise decode as U+FFFD
+    const chunks = [];
+    let size = 0;
+    let tooBig = false;
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 2 * 1024 * 1024) req.destroy();
+      size += chunk.length;
+      if (size > STORE_MAX_BYTES) {
+        tooBig = true;
+        fail(res, 413, 'too large');
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
     });
     req.on('end', () => {
+      if (tooBig) return;
       const store = readStore();
-      if (req.method === 'DELETE') delete store.values[key];
-      else store.values[key] = body;
+      if (req.method === 'DELETE') {
+        delete store.values[key];
+        store.deleted[key] = true;
+      } else {
+        store.values[key] = Buffer.concat(chunks).toString('utf8');
+        delete store.deleted[key];
+      }
       store.rev = (store.rev || 0) + 1;
       try {
         writeStore(store);
@@ -636,87 +778,105 @@ const handleStore = (req, res, requestUrl) => {
   res.end();
 };
 
-const server = http.createServer((req, res) => {
-  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (requestUrl.pathname.startsWith('/system/')) {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
-      return;
-    }
-    handleSystem(req, res, requestUrl.pathname.slice('/system/'.length));
+const API_PATHS = new Set([
+  '/lan-address',
+  '/tuya/scan',
+  '/background',
+  '/store',
+  '/store-rev',
+  '/proxy',
+  '/legacy-config',
+]);
+
+const handleRequest = (req, res) => {
+  // An aborted upload emits 'error' on the request; without a listener that kills the process
+  req.on('error', () => {});
+  let requestUrl;
+  try {
+    // Fixed base: the Host header is client input and may not parse
+    requestUrl = new URL(req.url, 'http://localhost');
+  } catch {
+    fail(res, 400, 'Bad request');
     return;
   }
-  if (requestUrl.pathname === '/lan-address') {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
+  const {pathname} = requestUrl;
+  const isSystem = pathname.startsWith('/system/');
+
+  if (isSystem || API_PATHS.has(pathname)) {
+    const denied = apiDenied(req);
+    if (denied) {
+      log('denied', req.method, pathname, denied, 'from', req.socket.remoteAddress, 'host', req.headers.host, 'origin', req.headers.origin);
+      fail(res, 403, denied);
       return;
     }
+  }
+
+  if (isSystem) {
+    handleSystem(req, res, pathname.slice('/system/'.length));
+    return;
+  }
+  if (pathname === '/lan-address') {
     res.writeHead(200, {'Content-Type': 'application/json'});
     res.end(JSON.stringify({addresses: lanAddresses(), port: PORT}));
     return;
   }
-  if (requestUrl.pathname === '/tuya/scan') {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
-      return;
-    }
-    handleTuyaScan(res);
+  if (pathname === '/tuya/scan') {
+    handleTuyaScan(res).catch((err) => fail(res, 500, err.message));
     return;
   }
-  if (requestUrl.pathname === '/background') {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
-      return;
-    }
+  if (pathname === '/background') {
     if (req.method !== 'POST') {
-      res.writeHead(405);
-      res.end();
+      fail(res, 405);
       return;
     }
     handleUpload(req, res, requestUrl);
     return;
   }
-  if (requestUrl.pathname === '/store' || requestUrl.pathname === '/store-rev') {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
-      return;
-    }
+  if (pathname === '/store' || pathname === '/store-rev') {
     handleStore(req, res, requestUrl);
     return;
   }
-  if (requestUrl.pathname === '/proxy' || requestUrl.pathname === '/legacy-config') {
-    if (!isPrivateAddress(req.socket.remoteAddress)) {
-      res.writeHead(403);
-      res.end('LAN only');
-      return;
-    }
-    if (requestUrl.pathname === '/legacy-config') {
-      handleLegacyConfig(res);
-      return;
-    }
-    handleProxy(req, res, requestUrl);
+  if (pathname === '/legacy-config') {
+    handleLegacyConfig(res).catch((err) => fail(res, 500, err.message));
+    return;
+  }
+  if (pathname === '/proxy') {
+    // Rejects when the page aborts while its POST body is still arriving
+    handleProxy(req, res, requestUrl).catch((err) => fail(res, 502, `Proxy error: ${err.message}`));
     return;
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.writeHead(405);
-    res.end();
+    fail(res, 405);
     return;
   }
   serveStatic(req, res, requestUrl);
+};
+
+const server = http.createServer((req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (err) {
+    log('request failed:', req.method, req.url, err.stack || err.message);
+    fail(res, 500);
+  }
 });
 
 // --- UDP bridge -------------------------------------------------------------
 
 const wss = new WebSocketServer({noServer: true});
+wss.on('error', (err) => log('udp bridge server error:', err.message));
 
 server.on('upgrade', (req, socket, head) => {
-  const {pathname} = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (pathname !== '/udp-bridge' || !isPrivateAddress(req.socket.remoteAddress)) {
+  socket.on('error', () => {});
+  let pathname;
+  try {
+    ({pathname} = new URL(req.url, 'http://localhost'));
+  } catch {
+    socket.destroy();
+    return;
+  }
+  // Browsers let any site open a WebSocket here; the bridge relays LAN sync payloads
+  if (pathname !== '/udp-bridge' || apiDenied(req)) {
     socket.destroy();
     return;
   }
@@ -729,6 +889,8 @@ wss.on('connection', (ws) => {
   const reply = (obj) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
   };
+
+  ws.on('error', () => {});
 
   ws.on('message', (raw) => {
     let msg;
@@ -783,6 +945,16 @@ wss.on('connection', (ws) => {
     } catch {}
     udp = null;
   });
+});
+
+// Log and keep serving: a crash drops every bridge socket and the sleep state
+process.on('uncaughtException', (err) => log('uncaught exception:', err?.stack || err));
+process.on('unhandledRejection', (err) => log('unhandled rejection:', err?.stack || err));
+
+// Startup errors (port in use) must still exit so pm2 retries
+server.on('error', (err) => {
+  log('server error:', err.message);
+  process.exit(1);
 });
 
 server.listen(PORT, () => {

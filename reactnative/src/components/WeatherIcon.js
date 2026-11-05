@@ -1,5 +1,6 @@
-import React from 'react';
+import React, {useEffect, useRef} from 'react';
 import LottieView from 'lottie-react-native';
+import useStore from '../store';
 
 import anim01d from '../assets/weather-icons/01d.json';
 import anim01n from '../assets/weather-icons/01n.json';
@@ -42,12 +43,22 @@ const lottieMap = {
 };
 
 const WeatherIcon = ({icon, size = 50}) => {
+  const asleep = useStore((s) => s.asleep);
+  const ref = useRef(null);
   const source = lottieMap[icon];
+
+  // Native keeps the frame on pause; the web shim has no ref and reloads on autoPlay
+  useEffect(() => {
+    if (asleep) ref.current?.pause?.();
+    else ref.current?.resume?.();
+  }, [asleep]);
+
   if (!source) return null;
   return (
     <LottieView
+      ref={ref}
       source={source}
-      autoPlay
+      autoPlay={!asleep}
       loop
       style={{width: size, height: size}}
     />

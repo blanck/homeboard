@@ -174,12 +174,23 @@ const useStore = create((set, get) => ({
   hideSearch: () =>
     set({searchPopupVisible: false, popupAnchor: null}),
 
-  // Bumped by the settings refresh button; the dashboard refetches everything
+  // Bumped to make the dashboard pollers run now. refreshKeys names the
+  // pollers to run; null means all, [] means nothing pending
   refreshNonce: 0,
-  requestRefresh: () => set((state) => ({refreshNonce: state.refreshNonce + 1})),
+  refreshKeys: [],
+  requestRefresh: (keys = null) =>
+    set((state) => ({
+      refreshNonce: state.refreshNonce + 1,
+      refreshKeys:
+        keys === null || state.refreshKeys === null
+          ? null
+          : [...new Set([...state.refreshKeys, ...keys])],
+    })),
 
-  // Screen
+  // Screen. asleep: inside the autosleep window with no touch for the idle
+  // period (set by useAutoSleep); pollers pause or stretch while it is true
   asleep: false,
+  setAsleep: (asleep) => set((state) => (state.asleep === asleep ? state : {asleep})),
   keepAwake: true,
   setKeepAwake: (keepAwake) => set({keepAwake}),
 }));

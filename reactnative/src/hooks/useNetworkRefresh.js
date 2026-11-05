@@ -1,7 +1,7 @@
 import {useEffect, useRef} from 'react';
 import NetInfo from '@react-native-community/netinfo';
-import {AppState} from 'react-native';
 
+// Reconnect only: foreground catch-up lives in usePolling
 const useNetworkRefresh = (onReconnect) => {
   const wasOnlineRef = useRef(true);
   const onReconnectRef = useRef(onReconnect);
@@ -22,21 +22,7 @@ const useNetworkRefresh = (onReconnect) => {
       }
       wasOnlineRef.current = isOnline;
     });
-
-    const appSub = AppState.addEventListener('change', (status) => {
-      if (status === 'active') {
-        try {
-          onReconnectRef.current?.();
-        } catch (e) {
-          console.warn('foreground handler error:', e);
-        }
-      }
-    });
-
-    return () => {
-      netSub();
-      appSub.remove();
-    };
+    return () => netSub();
   }, []);
 };
 

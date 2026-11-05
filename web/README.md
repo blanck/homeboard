@@ -15,7 +15,7 @@ The dashboard for the Raspberry Pi + touchscreen setup. This is **the same app a
 ```
 
 - **`vite.config.mjs`** aliases `react-native` to `react-native-web` and swaps native-only modules (`src/shims/`): storage goes to `localStorage`, UDP goes through the WebSocket bridge, Lottie renders with `lottie-web`, vector icons render from the icon ttf.
-- **`server.mjs`** has no dependencies beyond `ws`. `/proxy?url=...` forwards requests so the browser escapes CORS (Sonos SOAP on the LAN, Tibber, RSS feeds, La Marzocco, ...). The `/udp-bridge` WebSocket relays real UDP sockets, so Sonos SSDP discovery and LAN settings sync work exactly like on Android. Proxy and bridge only answer clients on private (LAN) addresses.
+- **`server.mjs`** has no dependencies beyond `ws`. `/proxy?url=...` forwards requests so the browser escapes CORS (Sonos SOAP on the LAN, Tibber, RSS feeds, La Marzocco, ...). The `/udp-bridge` WebSocket relays real UDP sockets, so Sonos SSDP discovery and LAN settings sync work exactly like on Android. Proxy and bridge only answer clients on private (LAN) addresses, reached by a LAN-style name (`localhost`, a private IP, a bare hostname, or `*.local`/`.lan`/`.home`/`.internal`), and refuse cross-site requests. For any other name (for example a Tailscale hostname) set `HOMEBOARD_ALLOWED_HOSTS=name1,name2` on the pm2 process.
 
 ## Configuration
 

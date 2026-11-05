@@ -205,7 +205,7 @@ const fileName = (url) => String(url || '').split('?')[0].split('/').pop();
 export const buildReaderHtml = ({article, html, byline, meta}) => {
   const image = article.urlToImage;
   // Most articles already open with the same picture the feed listed
-  const hero = image && !html.includes(fileName(image)) ? `<img src="${escapeHtml(image)}" alt="">` : '';
+  const hero = image && !html.includes(fileName(image)) ? `<div class="hero"><img src="${escapeHtml(image)}" alt=""></div>` : '';
   return `<!doctype html>
 <html><head>
 <meta charset="utf-8">
@@ -222,12 +222,25 @@ export const buildReaderHtml = ({article, html, byline, meta}) => {
   a { color: #7eb8e6; text-decoration: none; }
   blockquote { border-left: 4px solid #3a3a5a; margin: 0; padding-left: 18px; color: #c8c8d8; }
   pre { white-space: pre-wrap; font-size: 16px; }
+  .col { display: flex; flex-direction: column; }
+  .hero { order: 1; }
+  .body { order: 2; }
+  /* Landscape: text in a 56% column, photos float into the right rail where they occur */
+  @media (min-width: 1000px) and (orientation: landscape) {
+    main { max-width: 1600px; padding: 32px 48px 96px; }
+    .col { display: block; width: 56%; }
+    .col::after { content: ''; display: block; clear: both; }
+    .hero, .body figure, .body img { float: right; clear: right; width: 73.2%; margin: 6px -78.57% 24px 0; }
+    .body figure img { float: none; width: 100%; margin: 0 0 8px; }
+    .hero img { margin: 0; }
+    .body hr, .body table { clear: both; }
+  }
 </style>
-</head><body><main>
+</head><body><main><div class="col">
+  ${hero}
   <div class="meta">${escapeHtml(meta)}</div>
   <h1>${escapeHtml(article.title)}</h1>
   ${byline ? `<div class="meta">${escapeHtml(byline)}</div>` : ''}
-  ${hero}
-  ${html}
-</main></body></html>`;
+  <div class="body">${html}</div>
+</div></main></body></html>`;
 };

@@ -34,9 +34,11 @@ const WeatherWidget = ({onPressWeather}) => {
   const indoor = weather.indoor;
   const lang = config.language || 'en';
 
+  // wind_speed is m/s and getFeelslike converts to km/h itself. Wind chill only
+  // applies at 10 °C or colder with wind above 4.8 km/h
   const feelsLike =
-    outdoor.wind_speed
-      ? getFeelslike(outdoor.Temperature, outdoor.wind_speed / 3.6)
+    outdoor.wind_speed > 4.8 / 3.6 && Number(outdoor.Temperature) <= 10
+      ? getFeelslike(outdoor.Temperature, outdoor.wind_speed)
       : null;
 
   return (
@@ -76,7 +78,7 @@ const WeatherWidget = ({onPressWeather}) => {
             <Text style={styles.detailText}> {outdoor.Humidity}%</Text>
           </View>
           <View style={styles.windRow}>
-            {outdoor.wind_speed && outdoor.wind_deg ? (
+            {outdoor.wind_speed && outdoor.wind_deg != null ? (
               <>
                 <WindArrow deg={outdoor.wind_deg} size={24} />
                 <Text style={styles.detailText}>

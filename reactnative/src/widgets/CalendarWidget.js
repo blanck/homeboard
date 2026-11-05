@@ -31,7 +31,7 @@ const CalendarWidget = () => {
                     },
                   ]}>
                   <Text style={styles.time} numberOfLines={1}>
-                    {formatCalendarTime(event.start, lang)}
+                    {formatCalendarTime(event.start, lang, event.allDay)}
                   </Text>
                   <Text style={styles.event} numberOfLines={1}>
                     {event.summary}

@@ -18,7 +18,7 @@ export const fetchCurrentWeather = async (config) => {
   }
 
   const condition = data.weather[0];
-  const currentTemp = data.main.temp - 273;
+  const currentTemp = data.main.temp - 273.15;
 
   // Fetch daily high/low from OWM 5-day forecast
   let dayMin = currentTemp;
@@ -30,8 +30,8 @@ export const fetchCurrentWeather = async (config) => {
       const today = new Date().toISOString().substring(0, 10);
       const todayEntries = fcData.list.filter((e) => e.dt_txt?.startsWith(today));
       if (todayEntries.length > 0) {
-        dayMin = Math.min(...todayEntries.map((e) => e.main.temp_min - 273), currentTemp);
-        dayMax = Math.max(...todayEntries.map((e) => e.main.temp_max - 273), currentTemp);
+        dayMin = Math.min(...todayEntries.map((e) => e.main.temp_min - 273.15), currentTemp);
+        dayMax = Math.max(...todayEntries.map((e) => e.main.temp_max - 273.15), currentTemp);
       }
     }
   }
