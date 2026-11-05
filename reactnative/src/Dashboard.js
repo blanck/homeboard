@@ -80,6 +80,9 @@ const Dashboard = () => {
   const has = useStore(
     useShallow((s) => ({
       quotes: !!s.quotes && s.quotes.length > 0,
+      // No fetch has answered yet (reportFetch sets stale on the first reply)
+      quotesPending: s.stale.quotes === undefined,
+      tibberPending: s.stale.tibber === undefined,
       tibberToday: !!s.tibber?.currentSubscription?.priceInfo?.today,
       tibberCurrent: !!s.tibber?.currentSubscription?.priceInfo?.current,
       inverter: !!s.tibber2?.inverter,
@@ -344,11 +347,11 @@ const Dashboard = () => {
 
   // Show stocks widget OR tibber price chart in middle-right column
   const hasStocks = stocksConfigured && has.quotes;
-  const hasTibberPrices =
+  const wantsTibberPrices =
     isTibberEnabled &&
     config.showEnergyPrice !== false &&
-    config.showEnergyChart !== false &&
-    has.tibberToday;
+    config.showEnergyChart !== false;
+  const hasTibberPrices = wantsTibberPrices && has.tibberToday;
 
   const slots = resolveSlots(config);
   const showsHeadlines = Object.values(slots).includes('headlines');
@@ -388,7 +391,14 @@ const Dashboard = () => {
         if (hasStocks) {
           return <StocksWidget />;
         }
-        return hasTibberPrices ? <TibberPriceWidget /> : <TodoWidget />;
+        if (hasTibberPrices) {
+          return <TibberPriceWidget />;
+        }
+        // Stay empty until the first fetch answers, so To Do does not flash by first
+        if ((stocksConfigured && has.quotesPending) || (wantsTibberPrices && has.tibberPending)) {
+          return null;
+        }
+        return <TodoWidget />;
       default:
         return null;
     }
